@@ -16,7 +16,8 @@ contract SimTokenTest is Test {
         token = new SimToken(A);
     }
 
-    //This
+    //This test the mint function, once minted, check the balance 
+    //of the address minted to. In this case, address A
     function test_Mint() public {
         switchSigner(A);
         token.mint(A, 1000000e18);
@@ -31,6 +32,10 @@ contract SimTokenTest is Test {
         assertEq(supply, 800000000e18);
     }
 
+    /**presence of access crontrol to prevent unauthorized users
+    * from calling this function, in this case preventin address B 
+    * from calling the mint function, only Address A
+    */
     function test_UnathorisedMint() public {
         switchSigner(B);
         vm.expectRevert();
@@ -41,6 +46,19 @@ contract SimTokenTest is Test {
         switchSigner(A);
         string memory tokenName = token.name();
         assertEq(tokenName, "SIM");
+    }
+
+    function test_decimal() public {
+        switchSigner(A);
+        uint8 expectedDecimals = 18;
+        uint8 decimals = token.decimals();
+        assertEq(decimals, expectedDecimals);
+    }
+
+       function test_Symbol() public view {
+        string memory expectedSymbol = "STK";
+        string memory symbol = token.symbol();
+        assertEq(symbol, expectedSymbol);
     }
 
     function mkaddr(string memory name) public returns (address) {
