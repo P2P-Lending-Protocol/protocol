@@ -7,7 +7,15 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./PeerToken.sol";
 
 contract Governance {
-    // TODO: Add event and emit events for functions
+    
+    event VotingPowerAdded(address indexed msg.sender, address indexed contractAddress, uint256 indexed amount);
+    event CreatedProposal(address indexed msg.sender, uint256 indexed proposalId, uint256 indexed deadline);
+    event Voted(address indexed msg.sender, uint256 indexed id, string indexed options);
+    event VotingPowerReduced(address indexed msg.sender, address indexed contractAddress, uint256 indexed amount);
+    event GetProposal(uint256 indexed id);
+
+
+
     uint256 internal proposalId;
 
     enum ProposalType {
@@ -52,6 +60,7 @@ contract Governance {
         votingPower[msg.sender] = votingPower[msg.sender] + _amount;
 
         // emit event
+        emit VotingPowerAdded(msg.sender, address(this), _amount);
     }
 
     function reduceVotingPower(uint256 _amount) public {
@@ -61,6 +70,9 @@ contract Governance {
 
         votingPower[msg.sender] = votingPower[msg.sender] - _amount;
         token.transfer(msg.sender, _amount);
+
+        emit VotingPowerReduced(msg.sender, address(this), _amount);
+
     }
 
     function createProposal(
@@ -84,16 +96,22 @@ contract Governance {
         proposals[proposalId] = _newProposal;
 
         proposalId = proposalId + 1;
+
+        emit CreatedProposal(msg.sender, proposalId, _deadline);
+
     }
 
     function getProposal(
         uint256 _id
     ) public view returns (Proposal memory proposal_) {
         proposal_ = proposals[_id];
+
+        emit GetProposal(_id);
     }
 
     function vote(uint256 _id, uint256 _option) public {
-        // TODO: check proposal is active
+       // checks if contract is active
+        require(proposal[_id].status == Status.ACTIVE, "Proposal is inactive");    // checks if contract is active
         require(votingPower[msg.sender] > 0, "Not enough voting power");
         require(!voted[msg.sender][_id], "Already voted");
 
@@ -107,9 +125,28 @@ contract Governance {
         _proposal.vote_count[_option] =
             _proposal.vote_count[_option] +
             _userVotePower;
+        
 
         // issue voting rewards
 
-        // emit event
+      // emit event
+      emit Voted(msg.sender, _id, _option);
+
+        }
+      
+
+       /* notice proposal status
+    * this indicates the status of the proposal if ACTIVE, PENDING, COMPLETED...
+    *
+    */
+
+    function getProposalStatus(uint256 id) public returns(Status){
+        require(_proposalId <= proposalId, "Invalid proposal Id");
+        Proposal storage proposal = proposals[_proposalId];
+        return proposal.status;
+        emit GetProposal( id);
     }
-}
+
+    }
+
+
