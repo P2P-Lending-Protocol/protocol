@@ -8,10 +8,10 @@ import "./PeerToken.sol";
 
 contract Governance {
     
-    event VotingPowerAdded(address indexed msg.sender, address indexed contractAddress, uint256 indexed amount);
-    event CreatedProposal(address indexed msg.sender, uint256 indexed proposalId, uint256 indexed deadline);
-    event Voted(address indexed msg.sender, uint256 indexed id, string indexed options);
-    event VotingPowerReduced(address indexed msg.sender, address indexed contractAddress, uint256 indexed amount);
+    event VotingPowerAdded(address indexed msgSender, address indexed contractAddress, uint256 indexed amount);
+    event CreatedProposal(address indexed msgSender, uint256 indexed proposalId, uint256 indexed deadline);
+    event Voted(address indexed msgSender, uint256 indexed id, string indexed options);
+    event VotingPowerReduced(address indexed msgSender, address indexed contractAddress, uint256 indexed amount);
     event GetProposal(uint256 indexed id);
 
 
@@ -111,7 +111,7 @@ contract Governance {
 
     function vote(uint256 _id, uint256 _option) public {
        // checks if contract is active
-        require(proposal[_id].status == Status.ACTIVE, "Proposal is inactive");    // checks if contract is active
+        require(proposals[_id].status == Status.ACTIVE, "Proposal is inactive");    // checks if contract is active
         require(votingPower[msg.sender] > 0, "Not enough voting power");
         require(!voted[msg.sender][_id], "Already voted");
 
@@ -129,22 +129,22 @@ contract Governance {
 
         // issue voting rewards
 
-      // emit event
-      emit Voted(msg.sender, _id, _option);
+
 
         }
       
 
-       /* notice proposal status
+    /* notice proposal status
     * this indicates the status of the proposal if ACTIVE, PENDING, COMPLETED...
     *
     */
 
-    function getProposalStatus(uint256 id) public returns(Status){
-        require(_proposalId <= proposalId, "Invalid proposal Id");
+    function getProposalStatus(uint256 _proposalId) public returns(Status){
+        // require(_proposalId == Proposal.status, "Invalid proposal Id");
         Proposal storage proposal = proposals[_proposalId];
-        return proposal.status;
-        emit GetProposal( id);
+        return proposals[_proposalId].status;
+
+        emit GetProposal( _proposalId);
     }
 
     }
