@@ -12,12 +12,15 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev maps collateral token to their price feed
     mapping(address token => address priceFeed) private s_priceFeeds;
     /// @dev maps user to the value of balance he has collaterised
-    mapping(address user => mapping(address token => uint256 balance))
+    mapping(bytes32 => mapping(address token => uint256 balance))
         private s_addressToCollateralDeposited;
     /// @dev Collection of all colleteral Adresses
     address[] private s_collateralToken;
     /// @dev Our utility Token $PEER TODO: import the PEER Token Contract
     PeerToken private immutable i_PEER;
+
+    //Structs For OFFers
+    //Struct For Request
 
     /// @dev Acts as our contructor
     /// @param _initialOwner a parameter just like in doxygen (must be followed by parameter name)
@@ -41,4 +44,11 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev Assist with upgradable proxy
     /// @param address a parameter just like in doxygen (must be followed by parameter name)
     function _authorizeUpgrade(address) internal override onlyOwner {}
+}
+interface Protocol {
+    function depositCollateral();
+    function redeemCollateral();
+    function createRequest();
+    function serviceRequest();
+    function liquidateUser();
 }
