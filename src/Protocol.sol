@@ -9,6 +9,8 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/Ag
 import {SimToken as PeerToken} from "./SimToken.sol";
 import "./Libraries/Constant.sol";
 import "./Libraries/Errors.sol";
+import "./Libraries/Event.sol";
+
 
 /// @title The Proxy Contract for the protocol
 /// @author Benjamin Faruna, Favour Aniogor
@@ -27,8 +29,15 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         private s_addressToCollateralDeposited;
     ///@dev mapping the address of a user to its Struct
     mapping(address => User) private addressToUser;
+    mapping(address user => mapping(uint96 requestId => Request)) private request;
     /// @dev Collection of all colleteral Adresses
     address[] private s_collateralToken;
+    /// @dev Collection of all all the resquest;
+    Request [] private s_requests;
+    /// @dev request id;
+    uint96  private requestId;
+
+    mapping(address user => uint amount) private amountRequested;
 
     ///////////////
     /// EVENTS ///
@@ -56,12 +65,15 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         bool isVerified;
     }
     struct Request {
+        address tokenAddr;
         address author;
         uint256 amount;
         uint8 interest;
+        Offer [] offer;
         uint256 returnDate;
         Status status;
     }
+
     struct Offer {
         uint256 requestId;
         address author;
@@ -117,6 +129,38 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__TransferFailed();
         }
     }
+
+    function createRequest(
+        address _collateralAddr,
+        uint256 _amount,
+        uint8 _interest,
+        uint256 _returnDate
+        )
+        external  
+        moreThanZero(_amount) 
+        moreThanZero(_interest)
+        {
+        requestId = requestId + 1;
+        uint256 requiredCollateral = (_amount * 85) / 100;
+
+        // if()
+        amountRequested[msg.sender] += _amount;
+
+
+        if(s_addressToCollateralDeposited[msg.sender][ _collateralAddr] < requiredCollateral) revert INSUFFICIENT_COLLATERAL();
+        Request storage _newRequest = request[msg.sender][requestId];
+
+        _newRequest.author = msg.sender;
+        _newRequest.tokenAddr =  _collateralAddr;
+        _newRequest.amount = _amount;
+        _newRequest.interest = _interest;
+        _newRequest.returnDate = _returnDate;
+        _newRequest.status = Status.OPEN;
+        s_requests.push(_newRequest);
+        emit RequestCreated(msg.sender, requestId, _amount, _interest);   
+    }
+
+
 
     ///////////////////////
     /// VIEW FUNCTIONS ///
@@ -221,7 +265,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 //     function createRequest();
 //     function createOffer();
 
-//     function serviceRequest();
-//     function liquidateUser();
+//     function serliquidateUserviceRequest();
+//     function ();
 //     function tokenCollateral();
 // }

@@ -9,3 +9,4 @@ error Protocol__tokensAndPriceFeedsArrayMustBeSameLength();
 error Protocol__TokenNotAllowed();
 error Protocol__TransferFailed();
 error Protocol__BreaksHealthFactor();
+error INSUFFICIENT_COLLATERAL();
