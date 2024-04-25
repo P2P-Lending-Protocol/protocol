@@ -19,6 +19,13 @@ library Event {
         uint256 indexed amount
     );
 
+    event VoteDelegated(
+        address indexed from,
+        address indexed delegate,
+        uint256 proposalId,
+        uint96 numberOfVotes
+    );
+
     /// @notice Event for creating of proposal
     /// @dev this event is emitted for everytime the `createProposal` function is fired when a new proposal is created.
     event CreatedProposal(
