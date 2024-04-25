@@ -2,10 +2,10 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {SimToken} from "../src/SimToken.sol";
+import {PeerToken} from "../src/PeerToken.sol";
 
-contract SimTokenTest is Test {
-    SimToken public token;
+contract PeerTokenTest is Test {
+    PeerToken public token;
 
     address A = address(0xa);
     address B = address(0xb);
@@ -13,10 +13,10 @@ contract SimTokenTest is Test {
     function setUp() public {
         A = mkaddr("receiver a");
         B = mkaddr("receiver b");
-        token = new SimToken(A);
+        token = new PeerToken(A);
     }
 
-    //This test the mint function, once minted, check the balance 
+    //This test the mint function, once minted, check the balance
     //of the address minted to. In this case, address A
     function test_Mint() public {
         switchSigner(A);
@@ -33,9 +33,9 @@ contract SimTokenTest is Test {
     }
 
     /**presence of access crontrol to prevent unauthorized users
-    * from calling this function, in this case preventin address B 
-    * from calling the mint function, only Address A
-    */
+     * from calling this function, in this case preventin address B
+     * from calling the mint function, only Address A
+     */
     function test_UnathorisedMint() public {
         switchSigner(B);
         vm.expectRevert();
@@ -45,7 +45,7 @@ contract SimTokenTest is Test {
     function test_Name() public {
         switchSigner(A);
         string memory tokenName = token.name();
-        assertEq(tokenName, "SIM");
+        assertEq(tokenName, "PEER Token");
     }
 
     function test_decimal() public {
@@ -55,8 +55,8 @@ contract SimTokenTest is Test {
         assertEq(decimals, expectedDecimals);
     }
 
-       function test_Symbol() public view {
-        string memory expectedSymbol = "STK";
+    function test_Symbol() public view {
+        string memory expectedSymbol = "PEER";
         string memory symbol = token.symbol();
         assertEq(symbol, expectedSymbol);
     }
