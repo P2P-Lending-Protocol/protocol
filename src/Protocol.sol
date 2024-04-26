@@ -22,6 +22,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     /// @dev Our utility Token $PEER TODO: import the PEER Token Contract
     PeerToken private s_PEER;
+
     /// @dev maps collateral token to their price feed
     mapping(address token => address priceFeed) private s_priceFeeds;
     /// @dev maps user to the value of balance he has collaterised
@@ -29,6 +30,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         private s_addressToCollateralDeposited;
     ///@dev mapping the address of a user to its Struct
     mapping(address => User) private addressToUser;
+
     mapping(address user => mapping(uint96 requestId => Request)) private request;
     /// @dev Collection of all colleteral Adresses
     address[] private s_collateralToken;
@@ -37,7 +39,11 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev request id;
     uint96  private requestId;
 
-    mapping(address user => uint amount) private amountRequested;
+    mapping(address user => uint256 amount) private amountRequested;
+    mapping(address lender => uint256 amount) private amountUserIsLending;
+
+
+
 
     ///////////////
     /// EVENTS ///
@@ -55,6 +61,12 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         OPEN,
         SERVICED,
         CLOSED
+    }
+
+    enum OfferStatus{
+        OPEN,
+        REJECTED,
+        ACCEPTED
     }
 
     ////////////////////
@@ -75,11 +87,13 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     struct Offer {
-        uint256 requestId;
+        uint256 offerId;
+        address tokenAddr;
         address author;
         uint256 amount;
         uint8 interest;
         uint256 returnDate;
+        OfferStatus offerStatus;
     }
 
     ///////////////////
@@ -130,7 +144,13 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function createRequest(
+
+    /// @notice Creates a request for a loan
+    /// @param _collateralAddr Address of the collateral token
+    /// @param _amount Amount of the loan
+    /// @param _interest Interest rate of the loan
+    /// @param _returnDate Expected date of loan repayment
+    function createLendingRequest (
         address _collateralAddr,
         uint256 _amount,
         uint8 _interest,
@@ -141,24 +161,136 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         moreThanZero(_interest)
         {
         requestId = requestId + 1;
-        uint256 requiredCollateral = (_amount * 85) / 100;
+        uint256 _requiredCollateralToSpend = (s_addressToCollateralDeposited[msg.sender][ _collateralAddr] * 85) / 100;
 
-        // if()
-        amountRequested[msg.sender] += _amount;
+        if(amountRequested[msg.sender] > _requiredCollateralToSpend) revert INSUFFICIENT_COLLATERAL();
+            amountRequested[msg.sender] = amountRequested[msg.sender] + _amount;
+        
+            Request storage _newRequest = request[msg.sender][requestId];
 
-
-        if(s_addressToCollateralDeposited[msg.sender][ _collateralAddr] < requiredCollateral) revert INSUFFICIENT_COLLATERAL();
-        Request storage _newRequest = request[msg.sender][requestId];
-
-        _newRequest.author = msg.sender;
-        _newRequest.tokenAddr =  _collateralAddr;
-        _newRequest.amount = _amount;
-        _newRequest.interest = _interest;
-        _newRequest.returnDate = _returnDate;
-        _newRequest.status = Status.OPEN;
-        s_requests.push(_newRequest);
+            _newRequest.author = msg.sender;
+            _newRequest.tokenAddr =  _collateralAddr;
+            _newRequest.amount = _amount;
+            _newRequest.interest = _interest;
+            _newRequest.returnDate = _returnDate;
+            _newRequest.status = Status.OPEN;
+            s_requests.push(_newRequest);
         emit RequestCreated(msg.sender, requestId, _amount, _interest);   
     }
+
+
+    /// @notice Allows a lender to make an offer to a lending request
+    /// @param _borrower Address of the borrower who created the request
+    /// @param _requestId Unique identifier for the lending request
+    /// @param _amount Amount of money the lender is willing to lend
+    /// @param _interest Interest rate proposed by the lender
+    /// @param _returnedDate Expected return date for the lent amount
+    /// @param _tokenAddress Address of the token in which the loan is denominated
+    function makeLendingOffer(
+        address _borrower,
+        uint96 _requestId,
+        uint256  _amount,
+        uint8 _interest,
+        uint256 _returnedDate,
+        address _tokenAddress) 
+        external
+        moreThanZero(_amount)
+        moreThanZero(_interest)
+        {
+
+        Request storage _foundRequest =  request[_borrower][_requestId];
+        if(_foundRequest.status != Status.OPEN)  revert REQUEST_NOT_OPEN();         
+        if(IERC20(_tokenAddress).balanceOf(msg.sender) < _amount) revert INSUFFICIENT_BALANCE();
+
+        IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
+        
+        amountUserIsLending[msg.sender] = _amount;
+
+        Offer memory _offer;
+        _offer.offerId = _offer.offerId + 1;
+        _offer.author = msg.sender;
+        _offer.interest = _interest;
+        _offer.tokenAddr = _tokenAddress;
+        _offer.returnDate = _returnedDate;
+        _offer.offerStatus = OfferStatus.OPEN;
+        _offer.amount = _amount;
+        _foundRequest.offer.push(_offer);
+
+        emit OfferCreated(msg.sender,_tokenAddress,  _amount, _requestId);
+
+    }
+
+    /// @notice Responds to an offer for a lending request
+    /// @param _requestId Identifier of the request to which the offer was made
+    /// @param _offerId Identifier of the specific offer being responded to
+    /// @param _status New status of the offer, can be ACCEPTED or REJECTED
+    function respondToLendingOffer(
+        uint96 _requestId, 
+        uint256 _offerId, 
+        OfferStatus _status
+    ) external {
+    // Fetch the request and offer
+        Request storage _foundRequest = request[msg.sender][_requestId];
+        if(_foundRequest.status != Status.OPEN) revert REQUEST_NOT_OPEN();
+        if(_offerId > _foundRequest.offer.length) revert INVALID_ID();
+
+            Offer storage _foundOffer = _foundRequest.offer[_offerId];
+
+        if (_foundOffer.offerStatus != OfferStatus.OPEN) revert OFFER_NOT_OPEN();
+
+            // Update the offer status
+            _foundOffer.offerStatus = _status;
+
+        // Handle accepted offer
+        if (_status == OfferStatus.ACCEPTED) {
+            uint256 _amountToLend = amountUserIsLending[_foundOffer.author];
+            
+            amountUserIsLending[_foundOffer.author] = 0;
+            IERC20(_foundOffer.tokenAddr).transfer(msg.sender, _amountToLend);
+            _foundRequest.status = Status.SERVICED;
+
+            // Handle multiple offers
+                for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
+                    if(_index != _offerId){
+                        Offer storage otherOffer = _foundRequest.offer[_index];
+                        uint256 otherAmountToLend = amountUserIsLending[otherOffer.author];
+                        amountUserIsLending[otherOffer.author] = 0;
+                        IERC20(otherOffer.tokenAddr).transfer(otherOffer.author, otherAmountToLend);
+
+                    }
+                }
+            }
+        // Handle rejected offer
+        else if (_status == OfferStatus.REJECTED) {
+            uint256 amountToLend = amountUserIsLending[_foundOffer.author];
+            amountUserIsLending[_foundOffer.author] = 0;
+            IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
+        }
+
+    emit RespondToLendingOffer(msg.sender, _offerId, uint8(_foundRequest.status), uint8(_foundOffer.offerStatus));
+    }
+
+
+    /// @notice Directly services a lending request by transferring funds to the borrower
+    /// @param _borrower Address of the borrower to receive the funds
+    /// @param _requestId Identifier of the request being serviced
+    /// @param _tokenAddress Token in which the funds are being transferred
+    function serviceRequest(address _borrower, uint8 _requestId, address _tokenAddress) external {
+    
+    Request storage _foundRequest = request[_borrower][_requestId];
+
+    if (_foundRequest.status != Status.OPEN) revert REQUEST_NOT_OPEN();
+      uint256 amountToLend =   _foundRequest.amount;
+      
+    if(IERC20(_tokenAddress).balanceOf(msg.sender) < amountToLend) revert  INSUFFICIENT_BALANCE();
+    _foundRequest.amount = 0;
+      IERC20(_tokenAddress).transferFrom(msg.sender, _borrower, amountToLend);
+    _foundRequest.status = Status.SERVICED;
+    emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId);
+
+
+}
+
 
 
 
@@ -170,6 +302,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @param _user a parameter for the address to check
     /// @return uint256 returns the health factor which is supoose to be >= 1
     function _healthFactor(address _user) private view returns (uint256) {
+
         (
             uint256 _totalBurrowInUsd,
             uint256 _collateralValueInUsd
@@ -179,6 +312,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return
             (_collateralAdjustedForThreshold * Constants.PRECISION) /
             _totalBurrowInUsd;
+    }
+
+    function getAllCollateralToken() external view returns(address [] memory) {
+        return s_collateralToken;
     }
 
     /// @notice This checks the health factor to see if  it is broken if it is it reverts
