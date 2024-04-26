@@ -3,16 +3,15 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-// import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-import "./PeerToken.sol";
+// import "./PeerToken.sol";
 
 import {Event} from "./Libraries/Events.sol";
 import "./Libraries/Errors.sol";
 
 /// @title Governance Contract for the platform
-/// @author Benjamin Faruna, Jeremiah Samuel
+/// @author Benjamin Faruna, Jeremiah Samuel, Emmanuel Chukwuma
 /// @notice This contract that implements PeerLend DAO
 
 contract Governance is Ownable {
@@ -43,13 +42,12 @@ contract Governance is Ownable {
         uint256 deadline;
     }
 
-    mapping(uint256 => Proposal) proposal;
-
     Proposal[] internal proposals;
 
     mapping(address => uint96) votingPower;
     mapping(address => uint256) amountStaked;
     mapping(address => mapping(uint256 => bool)) voted;
+    mapping(address => mapping(uint256 => uint96)) delegatedVote;
 
     constructor(address _tokenAddress) Ownable(msg.sender) {
         peerToken = IERC20(_tokenAddress);
@@ -66,8 +64,8 @@ contract Governance is Ownable {
     function getProposal(
         uint256 _id
     ) public view returns (Proposal memory proposal_) {
-        require(_id <= proposalId, "Proposal not found");
-        proposal_ = proposal[_id];
+        require(_id < proposalId, "Proposal not found");
+        proposal_ = proposals[_id];
     }
 
     function getVotingPower(address _voter) public view returns (uint256) {
@@ -82,7 +80,7 @@ contract Governance is Ownable {
         Proposal[] memory _proposals = new Proposal[](limit);
 
         for (uint256 i = 0; i < limit; i++) {
-            _proposals[i] = proposal[start + i];
+            _proposals[i] = proposals[start + i];
         }
 
         return _proposals;
@@ -134,9 +132,7 @@ contract Governance is Ownable {
         Status _status,
         uint256 _deadline
     ) public onlyOwner {
-        proposalId = proposalId + 1;
-
-        Proposal storage _newProposal = proposal[proposalId];
+        Proposal memory _newProposal;
 
         _newProposal.id = proposalId;
         _newProposal.initiator = msg.sender;
@@ -149,6 +145,8 @@ contract Governance is Ownable {
 
         proposals.push(_newProposal);
 
+        proposalId = proposalId + 1;
+
         emit Event.CreatedProposal(msg.sender, proposalId, _deadline);
     }
 
@@ -157,8 +155,11 @@ contract Governance is Ownable {
         if (_id > proposalId) {
             revert Governance__ProposalDoesNotExist();
         }
-        Proposal storage _proposal = proposal[_id];
+        Proposal storage _proposal = proposals[_id];
         uint96 _userVotingPower = votingPower[msg.sender];
+        uint96 _delegatedVote = delegatedVote[msg.sender][_id];
+
+        _userVotingPower = _userVotingPower + _delegatedVote;
 
         // checks if contract is active
         if (_proposal.status != Status.ACTIVE) {
@@ -191,10 +192,32 @@ contract Governance is Ownable {
         emit Event.Voted(msg.sender, _id, _option);
     }
 
+    function delegateVote(address _delegate, uint256 _proposalId) public {
+        require(votingPower[msg.sender] == 1, "Does not have voting power");
+        if (voted[msg.sender][_proposalId]) {
+            revert Governance__AlreadyVoted();
+        }
+        require(votingPower[_delegate] == 1, "Cannot delegate to non members");
+        voted[msg.sender][_proposalId] = true;
+        uint96 _userDelegatedVotes = delegatedVote[msg.sender][_proposalId] + 1;
+
+        delegatedVote[_delegate][_proposalId] =
+            delegatedVote[_delegate][_proposalId] +
+            _userDelegatedVotes;
+
+        emit Event.VoteDelegated(
+            msg.sender,
+            _delegate,
+            _proposalId,
+            _userDelegatedVotes
+        );
+    }
+
     /// notice This returns the status of a proposal
     function getProposalStatus(
         uint256 _proposalId
     ) public view returns (Status) {
+        require(_proposalId < proposalId, "Proposal not found");
         Proposal memory _proposal = proposals[_proposalId];
         return _proposal.status;
     }
@@ -210,7 +233,7 @@ contract Governance is Ownable {
         uint256 _proposalId,
         Status _status
     ) internal {
-        Proposal storage _proposal = proposal[_proposalId];
+        Proposal storage _proposal = proposals[_proposalId];
         _proposal.status = _status;
 
         emit Event.ProposalUpdated(
