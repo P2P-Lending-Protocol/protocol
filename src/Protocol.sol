@@ -144,38 +144,53 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
+    function gets_addressToCollateralDeposited(address _sender, address tokenAddr) external view returns (uint256) {
+        return s_addressToCollateralDeposited[_sender][tokenAddr];
+    }
+
 
     /// @notice Creates a request for a loan
     /// @param _collateralAddr Address of the collateral token
     /// @param _amount Amount of the loan
     /// @param _interest Interest rate of the loan
     /// @param _returnDate Expected date of loan repayment
-    function createLendingRequest (
-        address _collateralAddr,
-        uint256 _amount,
-        uint8 _interest,
-        uint256 _returnDate
-        )
-        external  
-        moreThanZero(_amount) 
-        moreThanZero(_interest)
-        {
-        requestId = requestId + 1;
-        uint256 _requiredCollateralToSpend = (s_addressToCollateralDeposited[msg.sender][ _collateralAddr] * 85) / 100;
+  function createLendingRequest (
+    address _collateralAddr,
+    uint256 _amount,
+    uint8 _interest,
+    uint256 _returnDate
+    )
+    external
+    moreThanZero(_amount) 
+    moreThanZero(_interest)
+{
+    requestId = requestId + 1;
+    uint256 _requiredCollateralToSpend = (s_addressToCollateralDeposited[msg.sender][_collateralAddr] * 85) / 100;
 
-        if(amountRequested[msg.sender] > _requiredCollateralToSpend) revert INSUFFICIENT_COLLATERAL();
-            amountRequested[msg.sender] = amountRequested[msg.sender] + _amount;
-        
-            Request storage _newRequest = request[msg.sender][requestId];
+    // Check the new total request against the maximum allowable amount
+    uint256 newTotalRequest = amountRequested[msg.sender] + _amount;
+    if (newTotalRequest > _requiredCollateralToSpend) {
+        revert Protocol__InsufficientCollateral();
+    }
 
-            _newRequest.author = msg.sender;
-            _newRequest.tokenAddr =  _collateralAddr;
-            _newRequest.amount = _amount;
-            _newRequest.interest = _interest;
-            _newRequest.returnDate = _returnDate;
-            _newRequest.status = Status.OPEN;
-            s_requests.push(_newRequest);
-        emit RequestCreated(msg.sender, requestId, _amount, _interest);   
+    // Update the total requested amount
+    amountRequested[msg.sender] = newTotalRequest;
+
+    // Create and store the new request
+    Request storage _newRequest = request[msg.sender][requestId];
+    _newRequest.author = msg.sender;
+    _newRequest.tokenAddr =  _collateralAddr;
+    _newRequest.amount = _amount;
+    _newRequest.interest = _interest;
+    _newRequest.returnDate = _returnDate;
+    _newRequest.status = Status.OPEN;
+    s_requests.push(_newRequest);
+
+    emit RequestCreated(msg.sender, requestId, _amount, _interest);
+}
+
+    function getAllRequest() external view returns(Request [] memory){
+        return s_requests;
     }
 
 
@@ -199,8 +214,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         {
 
         Request storage _foundRequest =  request[_borrower][_requestId];
-        if(_foundRequest.status != Status.OPEN)  revert REQUEST_NOT_OPEN();         
-        if(IERC20(_tokenAddress).balanceOf(msg.sender) < _amount) revert INSUFFICIENT_BALANCE();
+        if(_foundRequest.status != Status.OPEN)  revert Protocol__RequestNotOpen();       
+        if(IERC20(_tokenAddress).balanceOf(msg.sender) < _amount) revert  Protocol__InsufficientBalance();
 
         IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
         
@@ -231,12 +246,12 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ) external {
     // Fetch the request and offer
         Request storage _foundRequest = request[msg.sender][_requestId];
-        if(_foundRequest.status != Status.OPEN) revert REQUEST_NOT_OPEN();
-        if(_offerId > _foundRequest.offer.length) revert INVALID_ID();
+        if(_foundRequest.status != Status.OPEN) revert Protocol__RequestNotOpen();
+        if(_offerId > _foundRequest.offer.length) revert Protocol__InvalidId();
 
             Offer storage _foundOffer = _foundRequest.offer[_offerId];
 
-        if (_foundOffer.offerStatus != OfferStatus.OPEN) revert OFFER_NOT_OPEN();
+        if (_foundOffer.offerStatus != OfferStatus.OPEN) revert Protocol__OfferNotOpen();
 
             // Update the offer status
             _foundOffer.offerStatus = _status;
@@ -275,21 +290,25 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @param _borrower Address of the borrower to receive the funds
     /// @param _requestId Identifier of the request being serviced
     /// @param _tokenAddress Token in which the funds are being transferred
-    function serviceRequest(address _borrower, uint8 _requestId, address _tokenAddress) external {
-    
-    Request storage _foundRequest = request[_borrower][_requestId];
+    function serviceRequest(
+        address _borrower, 
+        uint8 _requestId, 
+        address _tokenAddress)
+         external 
+         {
 
-    if (_foundRequest.status != Status.OPEN) revert REQUEST_NOT_OPEN();
-      uint256 amountToLend =   _foundRequest.amount;
-      
-    if(IERC20(_tokenAddress).balanceOf(msg.sender) < amountToLend) revert  INSUFFICIENT_BALANCE();
-    _foundRequest.amount = 0;
-      IERC20(_tokenAddress).transferFrom(msg.sender, _borrower, amountToLend);
-    _foundRequest.status = Status.SERVICED;
-    emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId);
+        Request storage _foundRequest = request[_borrower][_requestId];
 
-
-}
+        if (_foundRequest.status != Status.OPEN) revert Protocol__RequestNotOpen();
+        uint256 amountToLend =   _foundRequest.amount;
+        
+        if(IERC20(_tokenAddress).balanceOf(msg.sender) < amountToLend)
+         revert  Protocol__InsufficientBalance();
+         
+        IERC20(_tokenAddress).transferFrom(msg.sender, _borrower, amountToLend);
+        _foundRequest.status = Status.SERVICED;
+        emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId);
+    }
 
 
 

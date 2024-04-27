@@ -5,8 +5,10 @@ import {Test, console} from "forge-std/Test.sol";
 import {PeerToken} from "../src/PeerToken.sol";
 import {Protocol} from "../src/Protocol.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IProtocolTest} from "./IProtocolTest.sol";
+import "../src/Libraries/Errors.sol";
 
-contract ProtocolTest is Test {
+contract ProtocolTest is Test, IProtocolTest{
     PeerToken private peerToken;
     Protocol public protocol;
     address [] tokens;
@@ -37,19 +39,43 @@ contract ProtocolTest is Test {
 
     }
 
-    function testDepositQualateral() external {
+    function testDepositQualateral() public {
             // protocol.initialize(owner,tokens, priceFeed, address(peerToken));
-            switchSigner(diaToken);
+            switchSigner(WETHAddress);
             // console.log("balance is ::: ",IERC20(diaToken).balanceOf(address(0)));
-            IERC20(diaToken).transfer(owner, 10000);
+            IERC20(WETHAddress).transfer(owner, 10000);
 
             switchSigner(owner);
-            IERC20(diaToken).approve(address(protocol), 1000);
-            protocol.depositCollateral(diaToken, 1000);
-            // address [] memory collateralAddr = protocol.getAllCollateralToken();
-            // assertEq(collateralAddr.length, 1);
+            IERC20(WETHAddress).approve(address(protocol), 10000);
+            protocol.depositCollateral(WETHAddress, 10000);
+            uint256  _amountQualaterized = protocol.gets_addressToCollateralDeposited(owner, WETHAddress);
+            assertEq(_amountQualaterized, 10000);
     }
 
+    function testCreateLendingRequest() public {
+            testDepositQualateral();
+            protocol.createLendingRequest(WETHAddress, 5000,5,2 days);
+             uint _lenght = protocol.getAllRequest().length;
+            assertEq(_lenght, 1);
+    }
+
+   function testMultipleLendingRequests() public {
+    testDepositQualateral();
+
+    // First request: 50% of the collateral
+    protocol.createLendingRequest(WETHAddress, 5000, 5, 2 days);
+
+    // Second request: 10% of the collateral
+    protocol.createLendingRequest(WETHAddress, 1000, 5, 3 days);
+
+    // Total borrowed so far: 60% which is below 85%
+    uint _length = protocol.getAllRequest().length;
+    assertEq(_length, 2);
+
+    // This request would bring the total to 100%, which should fail since it exceeds the 85% limit
+    vm.expectRevert(abi.encodeWithSelector(INSUFFICIENT_COLLATERAL.selector));
+    protocol.createLendingRequest(WETHAddress, 5000, 5, 4 days);
+}
 
 
 
@@ -75,5 +101,8 @@ function switchSigner(address _newSigner) public {
             vm.startPrank(_newSigner);
         }
     }
+
+
+   
 
 }
