@@ -64,7 +64,9 @@ contract Governance is Ownable {
     function getProposal(
         uint256 _id
     ) public view returns (Proposal memory proposal_) {
-        require(_id < proposalId, "Proposal not found");
+        if (_id >= proposalId) {
+            revert Governance__ProposalDoesNotExist();
+        }
         proposal_ = proposals[_id];
     }
 
@@ -132,6 +134,7 @@ contract Governance is Ownable {
         Status _status,
         uint256 _deadline
     ) public onlyOwner {
+        _deadline = block.timestamp + _deadline;
         Proposal memory _newProposal;
 
         _newProposal.id = proposalId;
@@ -139,7 +142,7 @@ contract Governance is Ownable {
         _newProposal.options = _options;
         _newProposal.title = _title;
         _newProposal.status = _status;
-        _newProposal.deadline = block.timestamp + _deadline;
+        _newProposal.deadline = _deadline;
 
         _newProposal.vote_count = new uint96[](_options.length);
 
@@ -147,12 +150,12 @@ contract Governance is Ownable {
 
         proposalId = proposalId + 1;
 
-        emit Event.CreatedProposal(msg.sender, proposalId, _deadline);
+        emit Event.CreatedProposal(msg.sender, _newProposal.id, _deadline);
     }
 
     function vote(uint256 _id, uint256 _option) public {
         // checks if contract is active
-        if (_id > proposalId) {
+        if (_id >= proposalId) {
             revert Governance__ProposalDoesNotExist();
         }
         Proposal storage _proposal = proposals[_id];
@@ -173,9 +176,6 @@ contract Governance is Ownable {
         }
 
         if (block.timestamp > _proposal.deadline) {
-            if (_proposal.status == Status.ACTIVE) {
-                _updateProposalStatus(_id, Status.EXPIRED);
-            }
             revert Governance__ProposalExpired();
         }
 
@@ -193,11 +193,18 @@ contract Governance is Ownable {
     }
 
     function delegateVote(address _delegate, uint256 _proposalId) public {
-        require(votingPower[msg.sender] == 1, "Does not have voting power");
+        if (_proposalId >= proposalId) {
+            revert Governance__ProposalDoesNotExist();
+        }
+        require(_delegate != msg.sender, "Cannot delegate to self");
+        if (votingPower[msg.sender] == 0) {
+            revert Governance__NotEnoughVotingPower();
+        }
         if (voted[msg.sender][_proposalId]) {
             revert Governance__AlreadyVoted();
         }
         require(votingPower[_delegate] == 1, "Cannot delegate to non members");
+        require(!voted[_delegate][_proposalId], "Delegate has voted");
         voted[msg.sender][_proposalId] = true;
         uint96 _userDelegatedVotes = delegatedVote[msg.sender][_proposalId] + 1;
 
@@ -213,11 +220,20 @@ contract Governance is Ownable {
         );
     }
 
+    function getDelegatedVotes(
+        address _voter,
+        uint256 _proposalId
+    ) public view returns (uint96) {
+        return delegatedVote[_voter][_proposalId];
+    }
+
     /// notice This returns the status of a proposal
     function getProposalStatus(
         uint256 _proposalId
     ) public view returns (Status) {
-        require(_proposalId < proposalId, "Proposal not found");
+        if (_proposalId >= proposalId) {
+            revert Governance__ProposalDoesNotExist();
+        }
         Proposal memory _proposal = proposals[_proposalId];
         return _proposal.status;
     }
@@ -233,6 +249,9 @@ contract Governance is Ownable {
         uint256 _proposalId,
         Status _status
     ) internal {
+        if (_proposalId >= proposalId) {
+            revert Governance__ProposalDoesNotExist();
+        }
         Proposal storage _proposal = proposals[_proposalId];
         _proposal.status = _status;
 
