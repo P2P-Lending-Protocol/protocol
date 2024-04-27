@@ -2,29 +2,33 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20BurnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
+// import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
-contract PeerToken is
-    Initializable,
-    ERC20Upgradeable,
-    ERC20BurnableUpgradeable,
-    OwnableUpgradeable,
-    UUPSUpgradeable
-{
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
+/**
+ * @title SimToken
+ * @dev ERC20 token implementation.
+ */
+
+contract PeerToken is ERC20, Ownable {
+    /**
+     * @dev Constructor function
+     * @param initialOwner The address that will initially own all tokens.
+     */
+
+    constructor(
+        address initialOwner
+    ) ERC20("PEER Token", "PEER") Ownable(initialOwner) {}
+
+    /**
+     * @dev Mints new tokens and assigns them to the specified address.
+     * @param to The address to which the minted tokens will be assigned.
+     * @param amount The amount of tokens to mint.
+     * @notice Only the owner of the contract can call this function.
+     */
 
     function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
     }
-
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
 }

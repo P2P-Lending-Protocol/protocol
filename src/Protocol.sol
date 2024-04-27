@@ -6,7 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import {SimToken as PeerToken} from "./SimToken.sol";
+import {PeerToken} from "./PeerToken.sol";
 import "./Libraries/Constant.sol";
 import "./Libraries/Errors.sol";
 import "./Libraries/Event.sol";
