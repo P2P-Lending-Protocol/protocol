@@ -73,7 +73,7 @@ contract ProtocolTest is Test, IProtocolTest{
     assertEq(_length, 2);
 
     // This request would bring the total to 100%, which should fail since it exceeds the 85% limit
-    vm.expectRevert(abi.encodeWithSelector(INSUFFICIENT_COLLATERAL.selector));
+    vm.expectRevert(abi.encodeWithSelector(Protocol__InsufficientCollateral.selector));
     protocol.createLendingRequest(WETHAddress, 5000, 5, 4 days);
 }
 

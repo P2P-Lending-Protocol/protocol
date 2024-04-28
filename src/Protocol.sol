@@ -39,8 +39,14 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev request id;
     uint96  private requestId;
 
-    mapping(address user => uint256 amount) private amountRequested;
+    // mapping(address user => uint256 amount) private amountRequested;
     mapping(address lender => uint256 amount) private amountUserIsLending;
+
+    mapping(address => mapping(address => uint256)) private totalRepaymentObligation;
+
+     
+    //  mapping(address => uint256) private totalRepaymentObligation;
+
 
 
 
@@ -81,6 +87,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address author;
         uint256 amount;
         uint8 interest;
+        uint256 _totalRepayment;
         Offer [] offer;
         uint256 returnDate;
         Status status;
@@ -148,46 +155,80 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return s_addressToCollateralDeposited[_sender][tokenAddr];
     }
 
-
-    /// @notice Creates a request for a loan
-    /// @param _collateralAddr Address of the collateral token
-    /// @param _amount Amount of the loan
-    /// @param _interest Interest rate of the loan
-    /// @param _returnDate Expected date of loan repayment
-  function createLendingRequest (
-    address _collateralAddr,
-    uint256 _amount,
-    uint8 _interest,
-    uint256 _returnDate
+ /**
+     * @notice Creates a request for a loan
+     * @param _collateralAddr The address of the token used as collateral
+     * @param _amount The principal amount of the loan
+     * @param _interest The annual interest rate of the loan (in percentage points)
+     * @param _returnDate The unix timestamp by when the loan should be repaid
+     * @param _loanCurrency The currency in which the loan is denominated
+     * @dev This function calculates the required repayments and checks the borrower's collateral before accepting a loan request.
+     */
+    function createLendingRequest(
+        address _collateralAddr,
+        uint256 _amount,
+        uint8 _interest,
+        uint256 _returnDate,
+        address _loanCurrency
     )
-    external
-    moreThanZero(_amount) 
-    moreThanZero(_interest)
-{
-    requestId = requestId + 1;
-    uint256 _requiredCollateralToSpend = (s_addressToCollateralDeposited[msg.sender][_collateralAddr] * 85) / 100;
+        external
+        moreThanZero(_amount)
+        moreThanZero(_interest)
+    {
 
-    // Check the new total request against the maximum allowable amount
-    uint256 newTotalRequest = amountRequested[msg.sender] + _amount;
-    if (newTotalRequest > _requiredCollateralToSpend) {
-        revert Protocol__InsufficientCollateral();
+        // Calculate the duration of the loan in days
+        uint256 _repaymentDuration = (_returnDate - block.timestamp) / 60 / 60 / 24;
+
+        // Calculate the total repayment amount including interest
+        uint256 _totalRepayment = _amount + (_amount * _interest / 100) * _repaymentDuration / 365;
+
+        if(s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1) revert  Protocol__InsufficientCollateral();
+
+        // Fetch and update the total repayment obligation in the loan currency
+        uint256 _currentObligation = totalRepaymentObligation[msg.sender][_loanCurrency] + _totalRepayment;
+
+        // Convert the collateral value to the loan currency
+        uint256 collateralValueInLoanCurrency = convertCurrency(getAccountCollateralValue(msg.sender), _collateralAddr, _loanCurrency);
+        
+        // Calculate the maximum loanable amount as 85% of the collateral value
+        uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
+
+        // Ensure the new loan does not exceed the available collateral
+        if (_currentObligation > maxLoanableAmount) {
+            revert Protocol__InsufficientCollateral();
+        }
+
+        // Update the total repayment obligation
+        totalRepaymentObligation[msg.sender][_loanCurrency] = _currentObligation;
+
+        // Record the new loan request
+        requestId++;
+        Request storage _newRequest = request[msg.sender][requestId];
+        _newRequest.author = msg.sender;
+        _newRequest.tokenAddr = _collateralAddr;
+        _newRequest.amount = _amount;
+        _newRequest.interest = _interest;
+        _newRequest.returnDate = _returnDate;
+        _newRequest._totalRepayment = _totalRepayment;
+        _newRequest.status = Status.OPEN;
+        s_requests.push(_newRequest);
+
+        // Emit an event for the new loan request
+        emit RequestCreated(msg.sender, requestId, _amount, _interest);
     }
 
-    // Update the total requested amount
-    amountRequested[msg.sender] = newTotalRequest;
-
-    // Create and store the new request
-    Request storage _newRequest = request[msg.sender][requestId];
-    _newRequest.author = msg.sender;
-    _newRequest.tokenAddr =  _collateralAddr;
-    _newRequest.amount = _amount;
-    _newRequest.interest = _interest;
-    _newRequest.returnDate = _returnDate;
-    _newRequest.status = Status.OPEN;
-    s_requests.push(_newRequest);
-
-    emit RequestCreated(msg.sender, requestId, _amount, _interest);
+    function convertCurrency(
+        uint256 amount,
+        address fromCurrency,
+        address toCurrency) 
+        private view returns (uint256) 
+      {
+    uint256 fromPrice = getUsdValue(fromCurrency, 1);
+    uint256 toPrice = getUsdValue(toCurrency, 1);
+    return (amount * fromPrice) / toPrice;
 }
+
+
 
     function getAllRequest() external view returns(Request [] memory){
         return s_requests;
@@ -258,11 +299,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // Handle accepted offer
         if (_status == OfferStatus.ACCEPTED) {
+            _foundRequest.status = Status.SERVICED;
             uint256 _amountToLend = amountUserIsLending[_foundOffer.author];
-            
             amountUserIsLending[_foundOffer.author] = 0;
             IERC20(_foundOffer.tokenAddr).transfer(msg.sender, _amountToLend);
-            _foundRequest.status = Status.SERVICED;
 
             // Handle multiple offers
                 for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
@@ -304,7 +344,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         
         if(IERC20(_tokenAddress).balanceOf(msg.sender) < amountToLend)
          revert  Protocol__InsufficientBalance();
-         
+
         IERC20(_tokenAddress).transferFrom(msg.sender, _borrower, amountToLend);
         _foundRequest.status = Status.SERVICED;
         emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId);
