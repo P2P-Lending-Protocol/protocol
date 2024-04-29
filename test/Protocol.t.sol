@@ -13,12 +13,18 @@ contract ProtocolTest is Test, IProtocolTest{
     Protocol public protocol;
     address [] tokens;
     address [] priceFeed;
+    uint256 requestAmount = 2000e18;
+    uint8 interestRate = 5;
+    uint256 returnDate = block.timestamp + 365 days;  // 1 year later
  
     address owner = address(0xa);
     address B = address(0xb);
     address diaToken = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     // address USDCAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
    address WETHAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+   address DAI_ETH = 0x773616E4d11A78F511299002da57A0a94577F1f4;
+   address DAI_USD = 0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9;
 
 
     function setUp() public {
@@ -32,9 +38,9 @@ contract ProtocolTest is Test, IProtocolTest{
         // tokens.push(USDCAddress);
         tokens.push(WETHAddress);
 
-        priceFeed.push(diaToken);
-        priceFeed.push(WETHAddress);
-        // priceFeed.push(USDCAddress);
+        priceFeed.push(DAI_USD);
+        priceFeed.push(DAI_ETH);
+        // priceFeed.push(USDCAddre
         protocol.initialize(owner,tokens, priceFeed, address(peerToken));
         IERC20(WETHAddress).approve(address(protocol), type(uint).max);
 
@@ -45,38 +51,49 @@ contract ProtocolTest is Test, IProtocolTest{
             // protocol.initialize(owner,tokens, priceFeed, address(peerToken));
             switchSigner(WETHAddress);
             // console.log("balance is ::: ",IERC20(diaToken).balanceOf(address(0)));
-            IERC20(WETHAddress).transfer(owner, 10000);
+            IERC20(WETHAddress).transfer(owner, 1e18);
 
             switchSigner(owner);
-            protocol.depositCollateral(WETHAddress, 10000);
+            protocol.depositCollateral(WETHAddress, 1e18);
             uint256  _amountQualaterized = protocol.gets_addressToCollateralDeposited(owner, WETHAddress);
-            assertEq(_amountQualaterized, 10000);
+            assertEq(_amountQualaterized, 1e18);
     }
 
-// function testValidLendingRequest() public {
-//     protocol.mapTokenToContract(diaToken, 0x773616E4d11A78F511299002da57A0a94577F1f4);
-//     testDepositQualateral();
-//     uint256 requestAmount = 5000;
-//     uint8 interestRate = 5;
-//     uint256 returnDate = block.timestamp + 365 days;  // 1 year later
 
-//     // This should succeed if collateral and other conditions are met
+function testValidLendingRequest() public {
+    testDepositQualateral();
+
+
+    protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+
+    // Verify that the request is correctly added
+    Protocol.Request[] memory requests = protocol.getAllRequest();
+    assertEq(requests.length, 1);
+    assertEq(requests[0].amount, requestAmount);
+}
+
+// function testUser_CanCreate_TwoRequest() public {
+//     testDepositQualateral();
+
+
 //     protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+//     protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+
 
 //     // Verify that the request is correctly added
 //     Protocol.Request[] memory requests = protocol.getAllRequest();
-//     assertEq(requests.length, 1);
+//     assertEq(requests.length, 2);
 //     assertEq(requests[0].amount, requestAmount);
 // }
 
-//    function testMultipleLendingRequests() public {
+// function testMultipleLendingRequests() public {
 //     testDepositQualateral();
 
 //     // First request: 50% of the collateral
-//     protocol.createLendingRequest(WETHAddress, 5000, 5, 171432671565, diaToken);
+//     protocol.createLendingRequest(WETHAddress, 5000, interestRate, returnDate, diaToken);
 
 //     // Second request: 10% of the collateral
-//     protocol.createLendingRequest(WETHAddress, 1000, 5, 171432671565, diaToken);
+//     protocol.createLendingRequest(WETHAddress, 10000, 5, returnDate, diaToken);
 
 //     // Total borrowed so far: 60% which is below 85%
 //     uint _length = protocol.getAllRequest().length;
@@ -84,7 +101,7 @@ contract ProtocolTest is Test, IProtocolTest{
 
 //     // This request would bring the total to 100%, which should fail since it exceeds the 85% limit
 //     vm.expectRevert(abi.encodeWithSelector(Protocol__InsufficientCollateral.selector));
-//     protocol.createLendingRequest(WETHAddress, 5000, 5, 171432671565, diaToken);
+//     protocol.createLendingRequest(WETHAddress, 5000, 5, returnDate, diaToken);
 // }
 
 
