@@ -213,16 +213,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit RequestCreated(msg.sender, requestId, _amount, _interest);
     }
 
-//     function convertCurrency(
-//         uint256 amount,
-//         address fromCurrency,
-//         address toCurrency) 
-//         private view returns (uint256) 
-//       {
-//     uint256 fromPrice = getUsdValue(fromCurrency, 1);
-//     uint256 toPrice = getUsdValue(toCurrency, 1);
-//     return (amount * fromPrice) / toPrice;
-// }
 
     function calculateLoanInterest(
             uint256 _returnDate,
@@ -234,6 +224,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         // Calculate the total repayment amount including interest
          _totalRepayment = _amount + ((_amount * _interest) / 100) * _repaymentDuration / 365;
         }
+
+    
 
 
     function getAllRequest() external view returns(Request [] memory){
@@ -378,6 +370,7 @@ function serviceRequest(
 
         // Update the request's status to serviced
         _foundRequest.status = Status.SERVICED;
+        
 
         // Emit a success event with relevant details
         emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId, amountToLend);
