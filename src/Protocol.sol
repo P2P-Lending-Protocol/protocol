@@ -42,7 +42,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     // mapping(address user => uint256 amount) private amountRequested;
     mapping(address lender => uint256 amount) private amountUserIsLending;
 
-    mapping(address => mapping(address => uint256)) private totalRepaymentObligation;
+    mapping(address => mapping(address => uint256)) private userloanAmount;
 
      
     //  mapping(address => uint256) private totalRepaymentObligation;
@@ -155,7 +155,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return s_addressToCollateralDeposited[_sender][tokenAddr];
     }
 
- /**
+    event log(string message, uint indexed amount);
+    /**
      * @notice Creates a request for a loan
      * @param _collateralAddr The address of the token used as collateral
      * @param _amount The principal amount of the loan
@@ -175,18 +176,24 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         revert Protocol__InsufficientCollateral();
 
     // Fetch the total repayment obligation in the loan currency
-    uint256 _currentObligation = totalRepaymentObligation[msg.sender][_loanCurrency];
+    uint256 _currentObligation = userloanAmount[msg.sender][_loanCurrency];
     // Convert the collateral value to the loan currency
     uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
+    emit log("na me be the total colla #########", collateralValueInLoanCurrency);
+       uint256 _loanUsdValue =     getUsdValue(_loanCurrency, _amount);
+     emit log("na me be the loan usd value #########", _loanUsdValue);
 
     // Calculate the maximum loanable amount as 85% of the collateral value
     uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
+    emit log("na me be the 85 percent ---***----", maxLoanableAmount);
+
     // Ensure the new loan does not exceed the available collateral
-    if (_amount > maxLoanableAmount - _currentObligation) {
+    if (_loanUsdValue > maxLoanableAmount - _currentObligation) {
         revert Protocol__InsufficientCollateral();
     }
 
+    userloanAmount[msg.sender][_loanCurrency] = _loanUsdValue;
     // Record the new loan request
     requestId++;
     Request storage _newRequest = request[msg.sender][requestId];

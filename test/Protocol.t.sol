@@ -13,7 +13,7 @@ contract ProtocolTest is Test, IProtocolTest{
     Protocol public protocol;
     address [] tokens;
     address [] priceFeed;
-    uint256 requestAmount = 2000e18;
+    uint256 requestAmount = 5000e18;
     uint8 interestRate = 5;
     uint256 returnDate = block.timestamp + 365 days;  // 1 year later
  
@@ -90,10 +90,12 @@ function testValidLendingRequest() public {
 //     testDepositQualateral();
 
 //     // First request: 50% of the collateral
-//     protocol.createLendingRequest(WETHAddress, 5000, interestRate, returnDate, diaToken);
+//     protocol.createLendingRequest(WETHAddress, 3000e18, interestRate, returnDate, diaToken);
+//     protocol.createLendingRequest(WETHAddress, , interestRate, returnDate, diaToken);
+
 
 //     // Second request: 10% of the collateral
-//     protocol.createLendingRequest(WETHAddress, 10000, 5, returnDate, diaToken);
+//     // protocol.createLendingRequest(WETHAddress, 10000, 5, returnDate, diaToken);
 
 //     // Total borrowed so far: 60% which is below 85%
 //     uint _length = protocol.getAllRequest().length;
@@ -101,7 +103,7 @@ function testValidLendingRequest() public {
 
 //     // This request would bring the total to 100%, which should fail since it exceeds the 85% limit
 //     vm.expectRevert(abi.encodeWithSelector(Protocol__InsufficientCollateral.selector));
-//     protocol.createLendingRequest(WETHAddress, 5000, 5, returnDate, diaToken);
+//     // protocol.createLendingRequest(WETHAddress, 5000, 5, returnDate, diaToken);
 // }
 
 
