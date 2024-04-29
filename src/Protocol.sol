@@ -165,53 +165,42 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @dev This function calculates the required repayments and checks the borrower's collateral before accepting a loan request.
      */
     function createLendingRequest(
-        address _collateralAddr,
-        uint256 _amount,
-        uint8 _interest,
-        uint256 _returnDate,
-        address _loanCurrency
-    )
-        external
-        moreThanZero(_amount)
-        moreThanZero(_interest)
-    {
-        if(s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
-         revert  Protocol__InsufficientCollateral();
+    address _collateralAddr,
+    uint256 _amount,
+    uint8 _interest,
+    uint256 _returnDate,
+    address _loanCurrency
+) external moreThanZero(_amount) {
+    if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
+        revert Protocol__InsufficientCollateral();
 
-        uint256 _totalRepayment = calculateLoanInterest(_returnDate, _amount, _interest);
+    // Fetch the total repayment obligation in the loan currency
+    uint256 _currentObligation = totalRepaymentObligation[msg.sender][_loanCurrency];
+    // Convert the collateral value to the loan currency
+    uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
 
-        // Fetch and update the total repayment obligation in the loan currency
-        uint256 _currentObligation = totalRepaymentObligation[msg.sender][_loanCurrency] + _totalRepayment;
+    // Calculate the maximum loanable amount as 85% of the collateral value
+    uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
-        // Convert the collateral value to the loan currency
-        uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
-        
-        // Calculate the maximum loanable amount as 85% of the collateral value
-        uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
-
-        // Ensure the new loan does not exceed the available collateral
-        if (_currentObligation > maxLoanableAmount) {
-            revert Protocol__InsufficientCollateral();
-        }
-
-        // Update the total repayment obligation
-        totalRepaymentObligation[msg.sender][_loanCurrency] = _currentObligation;
-
-        // Record the new loan request
-        requestId++;
-        Request storage _newRequest = request[msg.sender][requestId];
-        _newRequest.author = msg.sender;
-        _newRequest.tokenAddr = _collateralAddr;
-        _newRequest.amount = _amount;
-        _newRequest.interest = _interest;
-        _newRequest.returnDate = _returnDate;
-        _newRequest._totalRepayment = _totalRepayment;
-        _newRequest.status = Status.OPEN;
-        s_requests.push(_newRequest);
-
-        // Emit an event for the new loan request
-        emit RequestCreated(msg.sender, requestId, _amount, _interest);
+    // Ensure the new loan does not exceed the available collateral
+    if (_amount > maxLoanableAmount - _currentObligation) {
+        revert Protocol__InsufficientCollateral();
     }
+
+    // Record the new loan request
+    requestId++;
+    Request storage _newRequest = request[msg.sender][requestId];
+    _newRequest.author = msg.sender;
+    _newRequest.tokenAddr = _collateralAddr;
+    _newRequest.amount = _amount;
+    _newRequest.interest = _interest;
+    _newRequest.returnDate = _returnDate;
+    _newRequest.status = Status.OPEN;
+    s_requests.push(_newRequest);
+
+    // Emit an event for the new loan request
+    emit RequestCreated(msg.sender, requestId, _amount, _interest);
+}
 
 
     function calculateLoanInterest(
