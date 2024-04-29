@@ -42,10 +42,10 @@ contract Governance is Ownable {
         uint256 deadline;
     }
 
-    // mapping(uint256 => Proposal) proposals;
-    Proposal[] proposals;
+    Proposal[] internal proposals;
 
-    mapping(address => uint256) votingPower;
+    mapping(address => uint96) votingPower;
+    mapping(address => uint256) amountStaked;
     mapping(address => mapping(uint256 => bool)) voted;
     mapping(address => mapping(uint256 => uint96)) delegatedVote;
 

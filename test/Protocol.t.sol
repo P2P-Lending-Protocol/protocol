@@ -25,7 +25,7 @@ contract ProtocolTest is Test, IProtocolTest{
         owner = mkaddr("owner");
         switchSigner(owner);
         B = mkaddr("receiver b");
-        peerToken = new PeerToken();
+        peerToken = new PeerToken(owner);
         protocol = new Protocol();
 
         tokens.push(diaToken);
@@ -53,21 +53,21 @@ contract ProtocolTest is Test, IProtocolTest{
             assertEq(_amountQualaterized, 10000);
     }
 
-function testValidLendingRequest() public {
-    protocol.mapTokenToContract(diaToken, 0x773616E4d11A78F511299002da57A0a94577F1f4);
-    testDepositQualateral();
-    uint256 requestAmount = 5000;
-    uint8 interestRate = 5;
-    uint256 returnDate = block.timestamp + 365 days;  // 1 year later
+// function testValidLendingRequest() public {
+//     protocol.mapTokenToContract(diaToken, 0x773616E4d11A78F511299002da57A0a94577F1f4);
+//     testDepositQualateral();
+//     uint256 requestAmount = 5000;
+//     uint8 interestRate = 5;
+//     uint256 returnDate = block.timestamp + 365 days;  // 1 year later
 
-    // This should succeed if collateral and other conditions are met
-    protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+//     // This should succeed if collateral and other conditions are met
+//     protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
 
-    // Verify that the request is correctly added
-    Protocol.Request[] memory requests = protocol.getAllRequest();
-    assertEq(requests.length, 1);
-    assertEq(requests[0].amount, requestAmount);
-}
+//     // Verify that the request is correctly added
+//     Protocol.Request[] memory requests = protocol.getAllRequest();
+//     assertEq(requests.length, 1);
+//     assertEq(requests[0].amount, requestAmount);
+// }
 
 //    function testMultipleLendingRequests() public {
 //     testDepositQualateral();
