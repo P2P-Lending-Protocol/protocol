@@ -45,7 +45,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(address => mapping(address => uint256)) private userloanAmount;
 
      
-    //  mapping(address => uint256) private totalRepaymentObligation;
+     mapping(address => uint256) private amountLoaned;
 
 
 
@@ -172,28 +172,28 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     uint256 _returnDate,
     address _loanCurrency
 ) external moreThanZero(_amount) {
-    if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
-        revert Protocol__InsufficientCollateral();
+    if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)revert Protocol__InsufficientCollateral();
 
-    // Fetch the total repayment obligation in the loan currency
-    uint256 _currentObligation = userloanAmount[msg.sender][_loanCurrency];
-    // Convert the collateral value to the loan currency
+    // Convert the requested amount to the loan currency's USD value
+    uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+    if(_loanUsdValue < 1) revert Protocol__InvalidAmount();
+ 
+    uint256 _currentObligation = amountLoaned[msg.sender]  += _loanUsdValue; 
+
+    // Calculate the user's total collateral value in the loan currency
     uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
-    emit log("na me be the total colla #########", collateralValueInLoanCurrency);
-       uint256 _loanUsdValue =     getUsdValue(_loanCurrency, _amount);
-     emit log("na me be the loan usd value #########", _loanUsdValue);
 
     // Calculate the maximum loanable amount as 85% of the collateral value
     uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
-    emit log("na me be the 85 percent ---***----", maxLoanableAmount);
-
-    // Ensure the new loan does not exceed the available collateral
-    if (_loanUsdValue > maxLoanableAmount - _currentObligation) {
+    // Ensure the total obligation including the current loan does not exceed 85% of the collateral value
+    if (_currentObligation > maxLoanableAmount) {
         revert Protocol__InsufficientCollateral();
     }
 
-    userloanAmount[msg.sender][_loanCurrency] = _loanUsdValue;
+    // Update the user's total loan amount in the loan currency
+    amountLoaned[msg.sender] = _currentObligation;
+
     // Record the new loan request
     requestId++;
     Request storage _newRequest = request[msg.sender][requestId];
@@ -209,19 +209,19 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     emit RequestCreated(msg.sender, requestId, _amount, _interest);
 }
 
-
-    function calculateLoanInterest(
-            uint256 _returnDate,
-            uint256 _amount,
-            uint256 _interest) 
-    internal view returns(uint256 _totalRepayment) {
-        // Calculate the duration of the loan in days
-        uint256 _repaymentDuration = (_returnDate - block.timestamp) / 60 / 60 / 24;
-        // Calculate the total repayment amount including interest
-         _totalRepayment = _amount + ((_amount * _interest) / 100) * _repaymentDuration / 365;
-        }
-
-    
+function calculateLoanInterest(
+    uint256 _returnDate,
+    uint256 _amount,
+    uint8 _interest
+) internal view returns (uint256 _totalRepayment) {
+    // Ensure that the return date is in the future
+    require(_returnDate > block.timestamp, "Return date must be in the future.");
+    // Calculate the duration of the loan in days
+    uint256 _repaymentDuration = (_returnDate - block.timestamp) / 86400; // seconds in a day
+    // Calculate the total repayment amount including interest
+    _totalRepayment = _amount + ((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
+    return _totalRepayment;
+}
 
 
     function getAllRequest() external view returns(Request [] memory){
@@ -439,7 +439,6 @@ function serviceRequest(
             Constants.PRECISION;
     }
 
-    
 
     /// @notice This gets the account info of any account
     /// @param _user a parameter for the user account info you want to get
