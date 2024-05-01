@@ -34,6 +34,7 @@ error Governance__OptionDoesNotExist();
 error Protocol__InsufficientCollateralDeposited();    
 error   Protocol__RepayAmountExceedsDebt();
 error Protocol__LoanNotServiced();
+error Protocol__InvalidAmount();
 
 
 

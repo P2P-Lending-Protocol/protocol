@@ -6,52 +6,61 @@ import {PeerToken} from "../src/PeerToken.sol";
 import {Protocol} from "../src/Protocol.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IProtocolTest} from "./IProtocolTest.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
 import "../src/Libraries/Errors.sol";
+
 
 contract ProtocolTest is Test, IProtocolTest{
     PeerToken private peerToken;
     Protocol public protocol;
     address [] tokens;
     address [] priceFeed;
-    uint256 requestAmount = 5000e18;
-    uint8 interestRate = 5;
-    uint256 returnDate = block.timestamp + 365 days;  // 1 year later
+
  
     address owner = address(0xa);
     address B = address(0xb);
+    address C = address(0xc);
+    
+     event log(string message,  Protocol.Offer [] _twoOffers );
+
+
     address diaToken = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     // address USDCAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
    address WETHAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-   address DAI_ETH = 0x773616E4d11A78F511299002da57A0a94577F1f4;
+   address WETH_USD = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
    address DAI_USD = 0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9;
 
 
     function setUp() public {
         owner = mkaddr("owner");
         switchSigner(owner);
-        B = mkaddr("receiver b");
+        B = mkaddr("B address");
+        C = mkaddr("C address");
         peerToken = new PeerToken(owner);
         protocol = new Protocol();
 
-        tokens.push(diaToken);
         // tokens.push(USDCAddress);
+        tokens.push(diaToken);
         tokens.push(WETHAddress);
 
         priceFeed.push(DAI_USD);
-        priceFeed.push(DAI_ETH);
+        priceFeed.push(WETH_USD);
         // priceFeed.push(USDCAddre
         protocol.initialize(owner,tokens, priceFeed, address(peerToken));
         IERC20(WETHAddress).approve(address(protocol), type(uint).max);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
 
 
     }
 
-    function testDepositQualateral() public {
+
+    function testDepositTCollateral() public {
             // protocol.initialize(owner,tokens, priceFeed, address(peerToken));
             switchSigner(WETHAddress);
             // console.log("balance is ::: ",IERC20(diaToken).balanceOf(address(0)));
-            IERC20(WETHAddress).transfer(owner, 1e18);
+            IERC20(WETHAddress).transfer(owner, 1 ether );
 
             switchSigner(owner);
             protocol.depositCollateral(WETHAddress, 1e18);
@@ -60,31 +69,137 @@ contract ProtocolTest is Test, IProtocolTest{
     }
 
 
-function testValidLendingRequest() public {
-    testDepositQualateral();
+    function testUser_CanCreate_TwoRequest() public {
+            testDepositTCollateral();
+            switchSigner(owner);
+
+            uint256 requestAmount = 1e18;
+            uint8 interestRate = 5;
+            uint256 returnDate = block.timestamp + 365 days;  
+
+            protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+            protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+
+            // Verify that the request is correctly added
+            Protocol.Request[] memory requests = protocol.getAllRequest();
+            assertEq(requests.length, 2);
+            assertEq(requests[0].amount, requestAmount);
+    }
 
 
-    protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+    function testExcessiveBorrowing() public {
+        testDepositTCollateral();
+        uint256 requestAmount = 50e18;
+        uint8 interestRate = 5;
+        uint256 returnDate = block.timestamp + 365 days;  // 1 year later
 
-    // Verify that the request is correctly added
-    Protocol.Request[] memory requests = protocol.getAllRequest();
-    assertEq(requests.length, 1);
-    assertEq(requests[0].amount, requestAmount);
-}
+        protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
 
-// function testUser_CanCreate_TwoRequest() public {
-//     testDepositQualateral();
-
-
-//     protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
-//     protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
+        // Verify that the request is correctly added
+        Protocol.Request[] memory requests = protocol.getAllRequest();
+        assertEq(requests.length, 1);
+        assertEq(requests[0].amount, requestAmount);
+    }
 
 
-//     // Verify that the request is correctly added
-//     Protocol.Request[] memory requests = protocol.getAllRequest();
-//     assertEq(requests.length, 2);
-//     assertEq(requests[0].amount, requestAmount);
+       function testUser_CanGiveOffer_ToRequest() public{
+        testUser_CanCreate_TwoRequest();
+
+        // note test user can give one offer to 1 request
+        // switchSigner(B);
+        switchSigner(diaToken);
+        IERC20(diaToken).transfer(B, 10e18);
+        switchSigner(B);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 1, 1e18, 7, block.timestamp + 10 days, diaToken);
+        Protocol.Offer [] memory offers =  protocol.getAllOfferForUser(owner,1);
+           assertEq(offers.length, 1);
+
+        //note TEST another user can give another offer  to  request with ID ONE 
+
+        switchSigner(diaToken);
+        IERC20(diaToken).transfer(C, 10e18);
+        switchSigner(C);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 1, 1e18, 8, block.timestamp + 20 days, diaToken);
+        Protocol.Offer [] memory _twoOffers =  protocol.getAllOfferForUser(owner,1);
+        emit log("**************!!!!!", _twoOffers);
+        assertEq(_twoOffers.length, 2);
+
+
+        //note TEST user can give another offer  to  request with ID TWO 
+        switchSigner(diaToken);
+        IERC20(diaToken).transfer(B, 10e18);
+        switchSigner(B);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 2, 1e18, 7, block.timestamp + 10 days, diaToken);
+        Protocol.Offer [] memory _Id2RequestOfferList =  protocol.getAllOfferForUser(owner,2);
+        assertEq(_Id2RequestOfferList.length, 1);
+
+        //note TEST user can give another offer  to  request with ID TWO 
+           switchSigner(diaToken);
+        IERC20(diaToken).transfer(C, 10e18);
+        switchSigner(C);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 2, 1e18, 8, block.timestamp + 20 days, diaToken);
+        Protocol.Offer [] memory _Id2Request_OfferList =  protocol.getAllOfferForUser(owner,2);
+        emit log("**************!!!!!", _Id2Request_OfferList);
+        assertEq(_Id2Request_OfferList.length, 2);
+    }
+
+    // function testMultiple_UserCanGive_OfferToOneRequest() public {
+
+    //     testUser_CanCreate_TwoRequest();
+
+    //     switchSigner(diaToken);
+    //     IERC20(diaToken).transfer(B, 10e18);
+
+
+    //     switchSigner(B);
+    //     IERC20(diaToken).approve(address(protocol), type(uint).max);
+    //     protocol.makeLendingOffer(owner, 1, 1e18, 7, block.timestamp + 10 days, diaToken);
+    //     Protocol.Offer [] memory offers =  protocol.getAllOfferForUser(owner,1);
+    //     assertEq(offers.length, 1);
+
+
+    
+    // }
+
+
+ 
+
+
+
+
+
+
+
+// function test_user_detail() public {
+
+//     // testDepositQualateral();
+//     switchSigner(owner);
+//     uint total = protocol.getAccountCollateralValue(owner);
+//     emit log("##########", total);
+
+
+
 // }
+
+// function testExcessiveBorrowing() public {
+
+//     IERC20(WETHAddress).transfer(owner, 1 ether);
+//     protocol.depositCollateral(WETHAddress, 1 ether);
+
+//     uint256 eightyFivePercentOfCollateral = 1700e18; // 85% of $2000
+
+//     uint256 excessiveLoanAmount = 1800e18;
+
+//     // Capture the revert
+//     // vm.expectRevert(bytes("Protocol__InsufficientCollateral"));
+//     protocol.createLendingRequest(WETHAddress,excessiveLoanAmount,5,block.timestamp + 365 days, diaToken);
+// }
+
+
 
 // function testMultipleLendingRequests() public {
 //     testDepositQualateral();
@@ -105,7 +220,6 @@ function testValidLendingRequest() public {
 //     vm.expectRevert(abi.encodeWithSelector(Protocol__InsufficientCollateral.selector));
 //     // protocol.createLendingRequest(WETHAddress, 5000, 5, returnDate, diaToken);
 // }
-
 
 
 
@@ -135,3 +249,27 @@ function switchSigner(address _newSigner) public {
    
 
 }
+
+
+
+
+// function setUp() public {
+//     owner = vm.addr(1);
+//     address alice = vm.addr(2);
+
+//     vm.startPrank(owner);
+//     peerToken = new PeerToken(owner);
+//     protocol = new Protocol();
+
+//     tokens.push(WETHAddress);
+//     tokens.push(diaToken);
+
+//     priceFeed.push(DAI_ETH); // Mock address representing ETH/USD feed
+//     priceFeed.push(DAI_USD); // Mock address representing DAI/USD feed
+
+//     protocol.initialize(owner, tokens, priceFeed, address(peerToken));
+//     IERC20(WETHAddress).approve(address(protocol), type(uint256).max);
+//     IERC20(diaToken).approve(address(protocol), type(uint256).max);
+
+//     vm.stopPrank();
+// }
