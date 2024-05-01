@@ -80,7 +80,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ///////////////////
     struct User {
         string email;
+        address userAddr;
         bool isVerified;
+        uint gitCoinPoint;
     }
     struct Request {
         address tokenAddr;
@@ -90,6 +92,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 _totalRepayment;
         Offer [] offer;
         uint256 returnDate;
+        address loanRequestAddr;
         Status status;
     }
 
@@ -166,27 +169,23 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @dev This function calculates the required repayments and checks the borrower's collateral before accepting a loan request.
      */
     function createLendingRequest(
-    address _collateralAddr,
-    uint256 _amount,
-    uint8 _interest,
-    uint256 _returnDate,
-    address _loanCurrency
-) external moreThanZero(_amount) {
+        address _collateralAddr,
+        uint256 _amount,
+        uint8 _interest,
+        uint256 _returnDate,
+        address _loanCurrency
+    ) external moreThanZero(_amount) {
     if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)revert Protocol__InsufficientCollateral();
 
-    // Convert the requested amount to the loan currency's USD value
     uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
     if(_loanUsdValue < 1) revert Protocol__InvalidAmount();
  
     uint256 _currentObligation = amountLoaned[msg.sender]  += _loanUsdValue; 
 
-    // Calculate the user's total collateral value in the loan currency
     uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
 
-    // Calculate the maximum loanable amount as 85% of the collateral value
     uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
-    // Ensure the total obligation including the current loan does not exceed 85% of the collateral value
     if (_currentObligation > maxLoanableAmount) {
         revert Protocol__InsufficientCollateral();
     }
@@ -203,6 +202,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     _newRequest.interest = _interest;
     _newRequest.returnDate = _returnDate;
     _newRequest.status = Status.OPEN;
+    _newRequest.loanRequestAddr = _loanCurrency;
     s_requests.push(_newRequest);
 
     // Emit an event for the new loan request
@@ -251,7 +251,7 @@ function calculateLoanInterest(
         Request storage _foundRequest =  request[_borrower][_requestId];
         if(_foundRequest.status != Status.OPEN)  revert Protocol__RequestNotOpen();       
         if(IERC20(_tokenAddress).balanceOf(msg.sender) < _amount) revert  Protocol__InsufficientBalance();
-
+        if(_foundRequest.loanRequestAddr != _tokenAddress) revert Protocol__InvalidToken();
 
         IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
         
@@ -269,6 +269,11 @@ function calculateLoanInterest(
 
         emit OfferCreated(msg.sender,_tokenAddress,  _amount, _requestId);
 
+    }
+
+    function getAllOfferForUser(address _borrower, uint96 _requestId) external view returns (Offer [] memory){
+            Request storage _foundRequest =  request[_borrower][_requestId];
+            return _foundRequest.offer;
     }
 
 
@@ -371,6 +376,32 @@ function serviceRequest(
         // Emit a success event with relevant details
         emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId, amountToLend);
     }
+
+
+    /// @notice Withdraws collateral from the protocol
+/// @param _tokenCollateralAddress Address of the collateral token
+/// @param _amount Amount of collateral to withdraw
+function withdrawCollateral(address _tokenCollateralAddress, uint256 _amount)
+    external
+    moreThanZero(_amount)
+    isTokenAllowed(_tokenCollateralAddress)
+{
+    uint256 depositedAmount = s_addressToCollateralDeposited[msg.sender][_tokenCollateralAddress];
+    if (depositedAmount < _amount) {
+        revert Protocol__InsufficientCollateralDeposited();
+    }
+
+    // Check if remaining collateral still covers all loan obligations
+    _revertIfHealthFactorIsBroken(msg.sender);
+
+    s_addressToCollateralDeposited[msg.sender][_tokenCollateralAddress] -= _amount;
+
+    bool success = IERC20(_tokenCollateralAddress).transfer(msg.sender, _amount);
+    require(success, "Protocol__TransferFailed");
+
+    emit CollateralWithdrawn(msg.sender, _tokenCollateralAddress, _amount);
+}
+
 
 
 

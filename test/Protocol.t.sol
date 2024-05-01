@@ -20,6 +20,11 @@ contract ProtocolTest is Test, IProtocolTest{
  
     address owner = address(0xa);
     address B = address(0xb);
+    address C = address(0xc);
+    
+     event log(string message,  Protocol.Offer [] _twoOffers );
+
+
     address diaToken = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     // address USDCAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
    address WETHAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -31,7 +36,8 @@ contract ProtocolTest is Test, IProtocolTest{
     function setUp() public {
         owner = mkaddr("owner");
         switchSigner(owner);
-        B = mkaddr("receiver b");
+        B = mkaddr("B address");
+        C = mkaddr("C address");
         peerToken = new PeerToken(owner);
         protocol = new Protocol();
 
@@ -64,10 +70,12 @@ contract ProtocolTest is Test, IProtocolTest{
 
 
     function testUser_CanCreate_TwoRequest() public {
-        testDepositTCollateral();
+            testDepositTCollateral();
+            switchSigner(owner);
+
             uint256 requestAmount = 1e18;
             uint8 interestRate = 5;
-            uint256 returnDate = block.timestamp + 365 days;  // 1 year later
+            uint256 returnDate = block.timestamp + 365 days;  
 
             protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
             protocol.createLendingRequest(WETHAddress, requestAmount, interestRate, returnDate, diaToken);
@@ -93,9 +101,75 @@ contract ProtocolTest is Test, IProtocolTest{
         assertEq(requests[0].amount, requestAmount);
     }
 
-    // function testUser_CanGiveOffer_ToRequest() public{
-        
+
+       function testUser_CanGiveOffer_ToRequest() public{
+        testUser_CanCreate_TwoRequest();
+
+        // note test user can give one offer to 1 request
+        // switchSigner(B);
+        switchSigner(diaToken);
+        IERC20(diaToken).transfer(B, 10e18);
+        switchSigner(B);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 1, 1e18, 7, block.timestamp + 10 days, diaToken);
+        Protocol.Offer [] memory offers =  protocol.getAllOfferForUser(owner,1);
+           assertEq(offers.length, 1);
+
+        //note TEST another user can give another offer  to  request with ID ONE 
+
+        switchSigner(diaToken);
+        IERC20(diaToken).transfer(C, 10e18);
+        switchSigner(C);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 1, 1e18, 8, block.timestamp + 20 days, diaToken);
+        Protocol.Offer [] memory _twoOffers =  protocol.getAllOfferForUser(owner,1);
+        emit log("**************!!!!!", _twoOffers);
+        assertEq(_twoOffers.length, 2);
+
+
+        //note TEST user can give another offer  to  request with ID TWO 
+        switchSigner(diaToken);
+        IERC20(diaToken).transfer(B, 10e18);
+        switchSigner(B);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 2, 1e18, 7, block.timestamp + 10 days, diaToken);
+        Protocol.Offer [] memory _Id2RequestOfferList =  protocol.getAllOfferForUser(owner,2);
+        assertEq(_Id2RequestOfferList.length, 1);
+
+        //note TEST user can give another offer  to  request with ID TWO 
+           switchSigner(diaToken);
+        IERC20(diaToken).transfer(C, 10e18);
+        switchSigner(C);
+        IERC20(diaToken).approve(address(protocol), type(uint).max);
+        protocol.makeLendingOffer(owner, 2, 1e18, 8, block.timestamp + 20 days, diaToken);
+        Protocol.Offer [] memory _Id2Request_OfferList =  protocol.getAllOfferForUser(owner,2);
+        emit log("**************!!!!!", _Id2Request_OfferList);
+        assertEq(_Id2Request_OfferList.length, 2);
+    }
+
+    // function testMultiple_UserCanGive_OfferToOneRequest() public {
+
+    //     testUser_CanCreate_TwoRequest();
+
+    //     switchSigner(diaToken);
+    //     IERC20(diaToken).transfer(B, 10e18);
+
+
+    //     switchSigner(B);
+    //     IERC20(diaToken).approve(address(protocol), type(uint).max);
+    //     protocol.makeLendingOffer(owner, 1, 1e18, 7, block.timestamp + 10 days, diaToken);
+    //     Protocol.Offer [] memory offers =  protocol.getAllOfferForUser(owner,1);
+    //     assertEq(offers.length, 1);
+
+
+    
     // }
+
+
+ 
+
+
+
 
 
 
