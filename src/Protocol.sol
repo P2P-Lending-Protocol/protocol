@@ -87,6 +87,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 _totalRepayment;
         Offer[] offer;
         uint256 returnDate;
+        address lender;
         address loanRequestAddr;
         Status status;
     }
@@ -325,33 +326,40 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
-    function handleAcceptedOffer(
-        Request storage _foundRequest,
-        Offer storage _foundOffer,
-        uint256 _offerId
-    ) internal {
-        uint256 amountToLend = amountUserIsLending[_foundOffer.author];
+function handleAcceptedOffer(
+    Request storage _foundRequest,
+    Offer storage _foundOffer,
+    uint256 _offerId
+) internal {
+    uint256 amountToLend = amountUserIsLending[_foundOffer.author];
+    uint256 _totalRepayment = calculateLoanInterest(
+        _foundOffer.returnDate,
+        amountToLend,
+        _foundOffer.interest);
 
-        amountUserIsLending[_foundOffer.author] = 0;
-        IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
-        _foundRequest.status = Status.SERVICED;
+    _foundRequest.lender = _foundOffer.author;
+    _foundRequest._totalRepayment = _totalRepayment;
+    _foundRequest.status = Status.SERVICED;
 
-        // Refund other offers
-        for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
-            if (
-                _index != _offerId &&
-                _foundRequest.offer[_index].offerStatus == OfferStatus.OPEN
-            ) {
-                Offer storage otherOffer = _foundRequest.offer[_index];
-                uint256 refundAmount = amountUserIsLending[otherOffer.author];
-                amountUserIsLending[otherOffer.author] = 0;
-                IERC20(otherOffer.tokenAddr).transfer(
-                    otherOffer.author,
-                    refundAmount
-                );
-            }
+    // Transfer the funds from the lender to the borrower
+    IERC20(_foundOffer.tokenAddr).transfer(_foundRequest.author, amountToLend);
+
+    // Zero out the lending amount
+    amountUserIsLending[_foundOffer.author] = 0;
+
+    // Refund other offers
+    for (uint256 _index = 0; _index < _foundRequest.offer.length; _index++) {
+        if (_index != _offerId && _foundRequest.offer[_index].offerStatus == OfferStatus.OPEN) {
+            Offer storage otherOffer = _foundRequest.offer[_index];
+            uint256 refundAmount = amountUserIsLending[otherOffer.author];
+            amountUserIsLending[otherOffer.author] = 0;
+            IERC20(otherOffer.tokenAddr).transfer(
+                otherOffer.author,
+                refundAmount
+            );
         }
     }
+}
 
     function handleRejectedOffer(Offer storage _foundOffer) internal {
         uint256 amountToRefund = amountUserIsLending[_foundOffer.author];
