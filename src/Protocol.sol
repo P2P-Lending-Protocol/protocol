@@ -11,7 +11,6 @@ import "./Libraries/Constant.sol";
 import "./Libraries/Errors.sol";
 import "./Libraries/Event.sol";
 
-
 /// @title The Proxy Contract for the protocol
 /// @author Benjamin Faruna, Favour Aniogor
 /// @notice This uses the EIP1822 UUPS standard from the opwnzeppelin library
@@ -31,25 +30,21 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ///@dev mapping the address of a user to its Struct
     mapping(address => User) private addressToUser;
 
-    mapping(address user => mapping(uint96 requestId => Request)) private request;
+    mapping(address user => mapping(uint96 requestId => Request))
+        private request;
     /// @dev Collection of all colleteral Adresses
     address[] private s_collateralToken;
     /// @dev Collection of all all the resquest;
-    Request [] private s_requests;
+    Request[] private s_requests;
     /// @dev request id;
-    uint96  private requestId;
+    uint96 private requestId;
 
     // mapping(address user => uint256 amount) private amountRequested;
     mapping(address lender => uint256 amount) private amountUserIsLending;
 
     mapping(address => mapping(address => uint256)) private userloanAmount;
 
-     
-     mapping(address => uint256) private amountLoaned;
-
-
-
-
+    mapping(address => uint256) private amountLoaned;
 
     ///////////////
     /// EVENTS ///
@@ -69,7 +64,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         CLOSED
     }
 
-    enum OfferStatus{
+    enum OfferStatus {
         OPEN,
         REJECTED,
         ACCEPTED
@@ -90,7 +85,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 amount;
         uint8 interest;
         uint256 _totalRepayment;
-        Offer [] offer;
+        Offer[] offer;
         uint256 returnDate;
         address loanRequestAddr;
         Status status;
@@ -154,7 +149,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function gets_addressToCollateralDeposited(address _sender, address tokenAddr) external view returns (uint256) {
+    function gets_addressToCollateralDeposited(
+        address _sender,
+        address tokenAddr
+    ) external view returns (uint256) {
         return s_addressToCollateralDeposited[_sender][tokenAddr];
     }
 
@@ -175,59 +173,72 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 _returnDate,
         address _loanCurrency
     ) external moreThanZero(_amount) {
-    if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)revert Protocol__InsufficientCollateral();
+        if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
+            revert Protocol__InsufficientCollateral();
 
-    uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
-    if(_loanUsdValue < 1) revert Protocol__InvalidAmount();
- 
-    uint256 _currentObligation = amountLoaned[msg.sender]  += _loanUsdValue; 
+        uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+        if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
 
-    uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
+        uint256 _currentObligation = amountLoaned[msg.sender] += _loanUsdValue;
 
-    uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
+        uint256 collateralValueInLoanCurrency = getAccountCollateralValue(
+            msg.sender
+        );
 
-    if (_currentObligation > maxLoanableAmount) {
-        revert Protocol__InsufficientCollateral();
+        uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
+
+        if (_currentObligation > maxLoanableAmount) {
+            revert Protocol__InsufficientCollateral();
+        }
+
+        // Update the user's total loan amount in the loan currency
+        amountLoaned[msg.sender] = _currentObligation;
+
+        // Record the new loan request
+        requestId++;
+        Request storage _newRequest = request[msg.sender][requestId];
+        _newRequest.author = msg.sender;
+        _newRequest.tokenAddr = _collateralAddr;
+        _newRequest.amount = _amount;
+        _newRequest.interest = _interest;
+        _newRequest.returnDate = _returnDate;
+        _newRequest.status = Status.OPEN;
+        _newRequest.loanRequestAddr = _loanCurrency;
+        s_requests.push(_newRequest);
+
+        // Emit an event for the new loan request
+        emit RequestCreated(msg.sender, requestId, _amount, _interest);
     }
 
-    // Update the user's total loan amount in the loan currency
-    amountLoaned[msg.sender] = _currentObligation;
+    function calculateLoanInterest(
+        uint256 _returnDate,
+        uint256 _amount,
+        uint8 _interest
+    ) internal view returns (uint256 _totalRepayment) {
+        // Ensure that the return date is in the future
+        require(
+            _returnDate > block.timestamp,
+            "Return date must be in the future."
+        );
+        // Calculate the duration of the loan in days
+        uint256 _repaymentDuration = (_returnDate - block.timestamp) / 86400; // seconds in a day
+        // Calculate the total repayment amount including interest
+        _totalRepayment =
+            _amount +
+            ((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
+        return _totalRepayment;
+    }
 
-    // Record the new loan request
-    requestId++;
-    Request storage _newRequest = request[msg.sender][requestId];
-    _newRequest.author = msg.sender;
-    _newRequest.tokenAddr = _collateralAddr;
-    _newRequest.amount = _amount;
-    _newRequest.interest = _interest;
-    _newRequest.returnDate = _returnDate;
-    _newRequest.status = Status.OPEN;
-    _newRequest.loanRequestAddr = _loanCurrency;
-    s_requests.push(_newRequest);
-
-    // Emit an event for the new loan request
-    emit RequestCreated(msg.sender, requestId, _amount, _interest);
-}
-
-function calculateLoanInterest(
-    uint256 _returnDate,
-    uint256 _amount,
-    uint8 _interest
-) internal view returns (uint256 _totalRepayment) {
-    // Ensure that the return date is in the future
-    require(_returnDate > block.timestamp, "Return date must be in the future.");
-    // Calculate the duration of the loan in days
-    uint256 _repaymentDuration = (_returnDate - block.timestamp) / 86400; // seconds in a day
-    // Calculate the total repayment amount including interest
-    _totalRepayment = _amount + ((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
-    return _totalRepayment;
-}
-
-
-    function getAllRequest() external view returns(Request [] memory){
+    function getAllRequest() external view returns (Request[] memory) {
         return s_requests;
     }
 
+    function getUserRequest(
+        address _user,
+        uint96 _requestId
+    ) external view returns (Request memory) {
+        return request[_user][_requestId];
+    }
 
     /// @notice Allows a lender to make an offer to a lending request
     /// @param _borrower Address of the borrower who created the request
@@ -239,22 +250,21 @@ function calculateLoanInterest(
     function makeLendingOffer(
         address _borrower,
         uint96 _requestId,
-        uint256  _amount,
+        uint256 _amount,
         uint8 _interest,
         uint256 _returnedDate,
-        address _tokenAddress) 
-        external
-        moreThanZero(_amount)
-        moreThanZero(_interest)
-        {
-
-        Request storage _foundRequest =  request[_borrower][_requestId];
-        if(_foundRequest.status != Status.OPEN)  revert Protocol__RequestNotOpen();       
-        if(IERC20(_tokenAddress).balanceOf(msg.sender) < _amount) revert  Protocol__InsufficientBalance();
-        if(_foundRequest.loanRequestAddr != _tokenAddress) revert Protocol__InvalidToken();
+        address _tokenAddress
+    ) external moreThanZero(_amount) moreThanZero(_interest) {
+        Request storage _foundRequest = request[_borrower][_requestId];
+        if (_foundRequest.status != Status.OPEN)
+            revert Protocol__RequestNotOpen();
+        if (IERC20(_tokenAddress).balanceOf(msg.sender) < _amount)
+            revert Protocol__InsufficientBalance();
+        if (_foundRequest.loanRequestAddr != _tokenAddress)
+            revert Protocol__InvalidToken();
 
         IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
-        
+
         amountUserIsLending[msg.sender] = _amount;
 
         Offer memory _offer;
@@ -267,144 +277,164 @@ function calculateLoanInterest(
         _offer.amount = _amount;
         _foundRequest.offer.push(_offer);
 
-        emit OfferCreated(msg.sender,_tokenAddress,  _amount, _requestId);
-
+        emit OfferCreated(msg.sender, _tokenAddress, _amount, _requestId);
     }
 
-    function getAllOfferForUser(address _borrower, uint96 _requestId) external view returns (Offer [] memory){
-            Request storage _foundRequest =  request[_borrower][_requestId];
-            return _foundRequest.offer;
+    function getAllOfferForUser(
+        address _borrower,
+        uint96 _requestId
+    ) external view returns (Offer[] memory) {
+        Request storage _foundRequest = request[_borrower][_requestId];
+        return _foundRequest.offer;
     }
 
+    /// @notice Responds to an offer for a lending request
+    /// @param _requestId Identifier of the request to which the offer was made
+    /// @param _offerId Identifier of the specific offer being responded to
+    /// @param _status New status of the offer, can be ACCEPTED or REJECTED
+    function respondToLendingOffer(
+        uint96 _requestId,
+        uint256 _offerId,
+        OfferStatus _status
+    ) external {
+        Request storage _foundRequest = request[msg.sender][_requestId];
+        if (_foundRequest.status != Status.OPEN)
+            revert Protocol__RequestNotOpen();
 
-/// @notice Responds to an offer for a lending request
-/// @param _requestId Identifier of the request to which the offer was made
-/// @param _offerId Identifier of the specific offer being responded to
-/// @param _status New status of the offer, can be ACCEPTED or REJECTED
-function respondToLendingOffer(
-    uint96 _requestId, 
-    uint256 _offerId, 
-    OfferStatus _status
-) external {
-    Request storage _foundRequest = request[msg.sender][_requestId];
-    if(_foundRequest.status != Status.OPEN) revert Protocol__RequestNotOpen();
+        if (_offerId > _foundRequest.offer.length) revert Protocol__InvalidId();
 
-    if(_offerId > _foundRequest.offer.length) revert Protocol__InvalidId();
+        Offer storage _foundOffer = _foundRequest.offer[_offerId];
+        if (_foundOffer.offerStatus != OfferStatus.OPEN)
+            revert Protocol__OfferNotOpen();
 
-    Offer storage _foundOffer = _foundRequest.offer[_offerId];
-    if (_foundOffer.offerStatus != OfferStatus.OPEN) revert Protocol__OfferNotOpen();
+        if (msg.sender != _foundRequest.author) revert Protocol__Unauthorized();
 
-    if(msg.sender != _foundRequest.author) revert Protocol__Unauthorized();
+        _foundOffer.offerStatus = _status;
 
-    _foundOffer.offerStatus = _status;
+        if (_status == OfferStatus.ACCEPTED) {
+            handleAcceptedOffer(_foundRequest, _foundOffer, _offerId);
+        } else if (_status == OfferStatus.REJECTED) {
+            handleRejectedOffer(_foundOffer);
+        }
 
-    if (_status == OfferStatus.ACCEPTED) {
-        handleAcceptedOffer(_foundRequest, _foundOffer, _offerId);
-    } else if (_status == OfferStatus.REJECTED) {
-        handleRejectedOffer(_foundOffer);
+        emit RespondToLendingOffer(
+            msg.sender,
+            _offerId,
+            uint8(_foundRequest.status),
+            uint8(_foundOffer.offerStatus)
+        );
     }
 
-    emit RespondToLendingOffer(msg.sender, _offerId, uint8(_foundRequest.status), 
-    uint8(_foundOffer.offerStatus));
-}
+    function handleAcceptedOffer(
+        Request storage _foundRequest,
+        Offer storage _foundOffer,
+        uint256 _offerId
+    ) internal {
+        uint256 amountToLend = amountUserIsLending[_foundOffer.author];
 
+        amountUserIsLending[_foundOffer.author] = 0;
+        IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
+        _foundRequest.status = Status.SERVICED;
 
-
-function handleAcceptedOffer(
-    Request storage _foundRequest,
-    Offer storage _foundOffer,
-    uint256 _offerId) 
-    internal 
-    {
-    uint256 amountToLend = amountUserIsLending[_foundOffer.author];
-
-    amountUserIsLending[_foundOffer.author] = 0;
-    IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
-    _foundRequest.status = Status.SERVICED;
-
-    // Refund other offers
-    for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
-        if (_index != _offerId && _foundRequest.offer[_index].offerStatus == OfferStatus.OPEN) {
-            Offer storage otherOffer = _foundRequest.offer[_index];
-            uint256 refundAmount = amountUserIsLending[otherOffer.author];
-            amountUserIsLending[otherOffer.author] = 0;
-            IERC20(otherOffer.tokenAddr).transfer(otherOffer.author, refundAmount);
+        // Refund other offers
+        for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
+            if (
+                _index != _offerId &&
+                _foundRequest.offer[_index].offerStatus == OfferStatus.OPEN
+            ) {
+                Offer storage otherOffer = _foundRequest.offer[_index];
+                uint256 refundAmount = amountUserIsLending[otherOffer.author];
+                amountUserIsLending[otherOffer.author] = 0;
+                IERC20(otherOffer.tokenAddr).transfer(
+                    otherOffer.author,
+                    refundAmount
+                );
+            }
         }
     }
-}
 
-
-function handleRejectedOffer(
-    Offer storage _foundOffer
-    )
-     internal
-{
-    uint256 amountToRefund = amountUserIsLending[_foundOffer.author];
-    amountUserIsLending[_foundOffer.author] = 0;
-    IERC20(_foundOffer.tokenAddr).transfer(_foundOffer.author, amountToRefund);
-}
-
-
+    function handleRejectedOffer(Offer storage _foundOffer) internal {
+        uint256 amountToRefund = amountUserIsLending[_foundOffer.author];
+        amountUserIsLending[_foundOffer.author] = 0;
+        IERC20(_foundOffer.tokenAddr).transfer(
+            _foundOffer.author,
+            amountToRefund
+        );
+    }
 
     /// @notice Directly services a lending request by transferring funds to the borrower
     /// @param _borrower Address of the borrower to receive the funds
     /// @param _requestId Identifier of the request being serviced
     /// @param _tokenAddress Token in which the funds are being transferred
-function serviceRequest(
-    address _borrower, 
-    uint8 _requestId, 
-    address _tokenAddress)
-    external 
-    {
-    Request storage _foundRequest = request[_borrower][_requestId];
-    if(_foundRequest.status != Status.OPEN) revert Protocol__RequestNotOpen();
-        if(_foundRequest.tokenAddr != _tokenAddress) revert  Protocol__InvalidToken();
+    function serviceRequest(
+        address _borrower,
+        uint8 _requestId,
+        address _tokenAddress
+    ) external {
+        Request storage _foundRequest = request[_borrower][_requestId];
+        if (_foundRequest.status != Status.OPEN)
+            revert Protocol__RequestNotOpen();
+        if (_foundRequest.tokenAddr != _tokenAddress)
+            revert Protocol__InvalidToken();
         uint256 amountToLend = _foundRequest.amount;
 
         // Check if the lender has enough balance and the allowance to transfer the tokens
-        if(IERC20(_tokenAddress).balanceOf(msg.sender) < amountToLend) revert  Protocol__InsufficientBalance();
-        if(IERC20(_tokenAddress).allowance(msg.sender, address(this)) < amountToLend)revert  Protocol__InsufficientAllowance();
+        if (IERC20(_tokenAddress).balanceOf(msg.sender) < amountToLend)
+            revert Protocol__InsufficientBalance();
+        if (
+            IERC20(_tokenAddress).allowance(msg.sender, address(this)) <
+            amountToLend
+        ) revert Protocol__InsufficientAllowance();
 
         // Transfer the funds from the lender to the borrower
-        bool success = IERC20(_tokenAddress).transferFrom(msg.sender, _borrower, amountToLend);
+        bool success = IERC20(_tokenAddress).transferFrom(
+            msg.sender,
+            _borrower,
+            amountToLend
+        );
         require(success, "Protocol__TransferFailed");
 
         // Update the request's status to serviced
         _foundRequest.status = Status.SERVICED;
-        
 
         // Emit a success event with relevant details
-        emit ServiceRequestSuccessful(msg.sender, _borrower, _requestId, amountToLend);
+        emit ServiceRequestSuccessful(
+            msg.sender,
+            _borrower,
+            _requestId,
+            amountToLend
+        );
     }
-
 
     /// @notice Withdraws collateral from the protocol
-/// @param _tokenCollateralAddress Address of the collateral token
-/// @param _amount Amount of collateral to withdraw
-function withdrawCollateral(address _tokenCollateralAddress, uint256 _amount)
-    external
-    moreThanZero(_amount)
-    isTokenAllowed(_tokenCollateralAddress)
-{
-    uint256 depositedAmount = s_addressToCollateralDeposited[msg.sender][_tokenCollateralAddress];
-    if (depositedAmount < _amount) {
-        revert Protocol__InsufficientCollateralDeposited();
+    /// @param _tokenCollateralAddress Address of the collateral token
+    /// @param _amount Amount of collateral to withdraw
+    function withdrawCollateral(
+        address _tokenCollateralAddress,
+        uint256 _amount
+    ) external moreThanZero(_amount) isTokenAllowed(_tokenCollateralAddress) {
+        uint256 depositedAmount = s_addressToCollateralDeposited[msg.sender][
+            _tokenCollateralAddress
+        ];
+        if (depositedAmount < _amount) {
+            revert Protocol__InsufficientCollateralDeposited();
+        }
+
+        // Check if remaining collateral still covers all loan obligations
+        _revertIfHealthFactorIsBroken(msg.sender);
+
+        s_addressToCollateralDeposited[msg.sender][
+            _tokenCollateralAddress
+        ] -= _amount;
+
+        bool success = IERC20(_tokenCollateralAddress).transfer(
+            msg.sender,
+            _amount
+        );
+        require(success, "Protocol__TransferFailed");
+
+        emit CollateralWithdrawn(msg.sender, _tokenCollateralAddress, _amount);
     }
-
-    // Check if remaining collateral still covers all loan obligations
-    _revertIfHealthFactorIsBroken(msg.sender);
-
-    s_addressToCollateralDeposited[msg.sender][_tokenCollateralAddress] -= _amount;
-
-    bool success = IERC20(_tokenCollateralAddress).transfer(msg.sender, _amount);
-    require(success, "Protocol__TransferFailed");
-
-    emit CollateralWithdrawn(msg.sender, _tokenCollateralAddress, _amount);
-}
-
-
-
-
 
     ///////////////////////
     /// VIEW FUNCTIONS ///
@@ -414,7 +444,6 @@ function withdrawCollateral(address _tokenCollateralAddress, uint256 _amount)
     /// @param _user a parameter for the address to check
     /// @return uint256 returns the health factor which is supoose to be >= 1
     function _healthFactor(address _user) private view returns (uint256) {
-
         (
             uint256 _totalBurrowInUsd,
             uint256 _collateralValueInUsd
@@ -426,7 +455,7 @@ function withdrawCollateral(address _tokenCollateralAddress, uint256 _amount)
             _totalBurrowInUsd;
     }
 
-    function getAllCollateralToken() external view returns(address [] memory) {
+    function getAllCollateralToken() external view returns (address[] memory) {
         return s_collateralToken;
     }
 
@@ -469,7 +498,6 @@ function withdrawCollateral(address _tokenCollateralAddress, uint256 _amount)
             ((uint256(_price) * Constants.NEW_PRECISION) * _amount) /
             Constants.PRECISION;
     }
-
 
     /// @notice This gets the account info of any account
     /// @param _user a parameter for the user account info you want to get
