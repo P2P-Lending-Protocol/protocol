@@ -79,7 +79,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         bool isVerified;
         uint gitCoinPoint;
         uint totalLoanCollected;
-
     }
     struct Request {
         address tokenAddr;
@@ -168,55 +167,97 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @param _loanCurrency The currency in which the loan is denominated
      * @dev This function calculates the required repayments and checks the borrower's collateral before accepting a loan request.
      */
-function createLendingRequest(
-    address _collateralAddr,
-    uint256 _amount,
-    uint8 _interest,
-    uint256 _returnDate,
-    address _loanCurrency
-) external moreThanZero(_amount) {
-    if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
-        revert Protocol__InsufficientCollateral();
+    function createLendingRequest(
+        address _collateralAddr,
+        uint256 _amount,
+        uint8 _interest,
+        uint256 _returnDate,
+        address _loanCurrency
+    ) external moreThanZero(_amount) {
+        if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
+            revert Protocol__InsufficientCollateral();
 
-    uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
-    if(_loanUsdValue < 1) revert Protocol__InvalidAmount();
+        uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+        if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
 
-    uint256 collateralValueInLoanCurrency = getAccountCollateralValue(msg.sender);
-    uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
+        uint256 collateralValueInLoanCurrency = getAccountCollateralValue(
+            msg.sender
+        );
+        uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
-    if (addressToUser[msg.sender].totalLoanCollected + _loanUsdValue > maxLoanableAmount) {
-        revert Protocol__InsufficientCollateral();
+        if (
+            addressToUser[msg.sender].totalLoanCollected + _loanUsdValue >
+            maxLoanableAmount
+        ) {
+            revert Protocol__InsufficientCollateral();
+        }
+
+        requestId++;
+        Request storage _newRequest = request[msg.sender][requestId];
+        _newRequest.author = msg.sender;
+        _newRequest.tokenAddr = _collateralAddr;
+        _newRequest.amount = _amount;
+        _newRequest.interest = _interest;
+        _newRequest.returnDate = _returnDate;
+        _newRequest._totalRepayment = calculateLoanInterest(
+            _returnDate,
+            _amount,
+            _interest
+        );
+        _newRequest.loanRequestAddr = _loanCurrency;
+        _newRequest.status = Status.OPEN;
+        s_requests.push(_newRequest);
+
+        emit RequestCreated(msg.sender, requestId, _amount, _interest);
     }
 
-    requestId++;
-    Request storage _newRequest = request[msg.sender][requestId];
-    _newRequest.author = msg.sender;
-    _newRequest.tokenAddr = _collateralAddr;
-    _newRequest.amount = _amount;
-    _newRequest.interest = _interest;
-    _newRequest.returnDate = _returnDate;
-    _newRequest.loanRequestAddr = _loanCurrency;
-    _newRequest.status = Status.OPEN;
-    s_requests.push(_newRequest);
+    function repayLoan(uint96 _requestId, uint256 _amount) public {
+        Request storage _foundRequest = request[msg.sender][_requestId];
+        if (_foundRequest.status != Status.SERVICED)
+            revert Protocol__RequestNotServiced();
 
-    emit RequestCreated(msg.sender, requestId, _amount, _interest);
-}
+        IERC20 _loanToken = IERC20(_foundRequest.loanRequestAddr);
+        if (_loanToken.balanceOf(msg.sender) < _amount)
+            revert Protocol__InsufficientBalance();
 
+        // protocol only pays what is remaining without taking excess user token
+        if (_foundRequest._totalRepayment >= _amount) {
+            _foundRequest._totalRepayment -= _amount;
+        } else {
+            _amount = _foundRequest._totalRepayment;
+            _foundRequest._totalRepayment = 0;
+        }
+
+        if (_foundRequest._totalRepayment == 0) {
+            _foundRequest.status = Status.CLOSED;
+        }
+
+        _loanToken.transferFrom(msg.sender, _foundRequest.lender, _amount);
+
+        // uint256 _repaymentValueUsd = getUsdValue(_foundRequest.tokenAddr, _amount);
+
+        // userloanAmount[msg.sender][_foundRequest.tokenAddr] -= _amount;
+
+        emit LoanRepayment(msg.sender, _requestId, _amount);
+    }
 
     function calculateLoanInterest(
         uint256 _returnDate,
         uint256 _amount,
         uint8 _interest
     ) internal view returns (uint256 _totalRepayment) {
-        require(_returnDate > block.timestamp,"Return date must be in the future.");
+        require(
+            _returnDate > block.timestamp,
+            "Return date must be in the future."
+        );
         // Calculate the duration of the loan in days
         uint256 _repaymentDuration = (_returnDate - block.timestamp) / 86400; // seconds in a day
         // Calculate the total repayment amount including interest
-        _totalRepayment =_amount +((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
+        _totalRepayment =
+            _amount +
+            ((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
         return _totalRepayment;
     }
-
-
 
     function getAllRequest() external view returns (Request[] memory) {
         return s_requests;
@@ -319,24 +360,24 @@ function createLendingRequest(
         Offer storage _foundOffer,
         uint96 _offerId
     ) internal {
-
         _foundRequest.lender = _foundOffer.author;
         _foundRequest.status = Status.SERVICED;
         // _foundRequest.disbursementTimestamp = block.timestamp;  // Timestamp for interest accrual start
 
-        uint256 _totalRepayment = calculateLoanInterest(_foundOffer.returnDate,
+        uint256 _totalRepayment = calculateLoanInterest(
+            _foundOffer.returnDate,
             _foundOffer.amount,
             _foundOffer.interest
-            );
-    _foundRequest._totalRepayment = _totalRepayment;
-    // Update user's total obligation with the expected total repayment
-    addressToUser[_foundRequest.author].totalLoanCollected += _totalRepayment;
+        );
+        _foundRequest._totalRepayment = _totalRepayment;
+        // Update user's total obligation with the expected total repayment
+        addressToUser[_foundRequest.author]
+            .totalLoanCollected += _totalRepayment;
 
-         uint256 amountToLend = amountUserIsLending[_foundOffer.author];
+        uint256 amountToLend = amountUserIsLending[_foundOffer.author];
 
         amountUserIsLending[_foundOffer.author] = 0;
         IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
-
 
         // Refund other offers
         for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
@@ -353,13 +394,8 @@ function createLendingRequest(
                 );
             }
         }
-    emit OfferAccepted(_foundRequest.author, _offerId);
-
-
+        emit OfferAccepted(_foundRequest.author, _offerId);
     }
-
-
-
 
     function handleRejectedOffer(Offer storage _foundOffer) internal {
         uint256 amountToRefund = amountUserIsLending[_foundOffer.author];
@@ -382,7 +418,7 @@ function createLendingRequest(
         Request storage _foundRequest = request[_borrower][_requestId];
         if (_foundRequest.status != Status.OPEN)
             revert Protocol__RequestNotOpen();
-        if (_foundRequest.tokenAddr != _tokenAddress)
+        if (_foundRequest.loanRequestAddr != _tokenAddress)
             revert Protocol__InvalidToken();
         uint256 amountToLend = _foundRequest.amount;
 
@@ -442,6 +478,48 @@ function createLendingRequest(
         require(success, "Protocol__TransferFailed");
 
         emit CollateralWithdrawn(msg.sender, _tokenCollateralAddress, _amount);
+    }
+
+    /// @notice Adds new collateral tokens to the protocol
+    /// @param _tokens Array of new collateral token addresses
+    /// @param _priceFeeds Array of price feed addresses for the new collateral tokens
+    function addCollateralTokens(
+        address[] memory _tokens,
+        address[] memory _priceFeeds
+    ) external onlyOwner {
+        if (_tokens.length != _priceFeeds.length) {
+            revert Protocol__tokensAndPriceFeedsArrayMustBeSameLength();
+        }
+        for (uint8 i = 0; i < _tokens.length; i++) {
+            s_priceFeeds[_tokens[i]] = _priceFeeds[i];
+            s_collateralToken.push(_tokens[i]);
+        }
+        emit UpdatedCollateralTokens(
+            msg.sender,
+            uint8(s_collateralToken.length)
+        );
+    }
+
+    /// @notice Removes collateral tokens from the protocol
+    /// @param _tokens Array of collateral token addresses to remove
+    function removeCollateralTokens(
+        address[] memory _tokens
+    ) external onlyOwner {
+        for (uint8 i = 0; i < _tokens.length; i++) {
+            s_priceFeeds[_tokens[i]] = address(0);
+            for (uint8 j = 0; j < s_collateralToken.length; j++) {
+                if (s_collateralToken[j] == _tokens[i]) {
+                    s_collateralToken[j] = s_collateralToken[
+                        s_collateralToken.length - 1
+                    ];
+                    s_collateralToken.pop();
+                }
+            }
+        }
+        emit UpdatedCollateralTokens(
+            msg.sender,
+            uint8(s_collateralToken.length)
+        );
     }
 
     ///////////////////////
