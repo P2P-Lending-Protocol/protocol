@@ -65,4 +65,4 @@ In a decentralized system, voting power must be balanced to ensure fairness. The
 
 To be eligible to vote, users must stake a certain amount of $Peer tokens. The `addVotingPower` function is used to stake tokens, while `reduceVotingPower` is used when a user wants to unstake.
 
-PeerLend Governance Protocol is committed to fostering transparency, decentralization, and community participation within the lending protocol. With these governance mechanisms in place, users can actively contribute to the evolution and success of the protocol.
+PeerLend Governance Protocol is committed to fostering transparency, decentralization, and community participation within the lending protocol. With these governance mechanisms in place, users can actively contribute to the growth and success of the protocol.
