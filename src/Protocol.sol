@@ -295,7 +295,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (_foundRequest.loanRequestAddr != _tokenAddress)
             revert Protocol__InvalidToken();
 
-        IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_tokenAddress).approve(address(this), _amount);
 
         amountUserIsLending[msg.sender] = _amount;
 
@@ -310,14 +310,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _foundRequest.offer.push(_offer);
 
         emit OfferCreated(msg.sender, _tokenAddress, _amount, _requestId);
-    }
-
-    function getAllOfferForUser(
-        address _borrower,
-        uint96 _requestId
-    ) external view returns (Offer[] memory) {
-        Request storage _foundRequest = request[_borrower][_requestId];
-        return _foundRequest.offer;
     }
 
     /// @notice Responds to an offer for a lending request
@@ -598,6 +590,18 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return
             ((uint256(_price) * Constants.NEW_PRECISION) * _amount) /
             Constants.PRECISION;
+    }
+
+    /// @dev gets all the offers for a particular user
+    /// @param _borrower the user who is trying to borrow
+    /// @param _requestId the id of the request you are trying to get the offers from
+    /// @return {Offer[] memory} the collection of offers made
+    function getAllOfferForUser(
+        address _borrower,
+        uint96 _requestId
+    ) external view returns (Offer[] memory) {
+        Request storage _foundRequest = request[_borrower][_requestId];
+        return _foundRequest.offer;
     }
 
     /// @notice This gets the account info of any account
