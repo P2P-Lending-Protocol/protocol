@@ -31,3 +31,5 @@ event CollateralWithdrawn(
     uint256 _amount
 );
 event UpdatedCollateralTokens(address indexed sender, uint8 newTokensCount);
+event OfferAccepted(address indexed sender, uint96 id);
+event LoanRepayment(address indexed sender, uint96 id, uint256 amount);
