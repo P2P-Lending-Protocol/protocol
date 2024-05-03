@@ -8,5 +8,5 @@ pragma solidity ^0.8.9;
     event RespondToLendingOffer(address indexed sender,uint indexed _offerId, uint8 _status, uint8 _offerStatus);
     event ServiceRequestSuccessful(address indexed sender,address indexed _borrower,uint8 _requestId,uint256 amount);
     event  CollateralWithdrawn(address indexed sender, address indexed  _tokenCollateralAddress, uint256 _amount);
-
+    event OfferAccepted(address indexed sender, uint96 id);
 

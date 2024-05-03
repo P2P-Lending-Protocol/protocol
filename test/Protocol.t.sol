@@ -93,7 +93,7 @@ contract ProtocolTest is Test, IProtocolTest {
 
     function testExcessiveBorrowing() public {
         testDepositTCollateral();
-        uint256 requestAmount = 50e18;
+        uint256 requestAmount = 500e18;
         uint8 interestRate = 5;
         uint256 returnDate = block.timestamp + 365 days; // 1 year later
 
