@@ -1,3 +1,9 @@
+## Contract Address
+- $PEER address 0x8Bbf71bC1EF43F72b5e456a59d5c817e096Bc8A4
+- Governance address 0x57014287f2DA0b1494502849A0F6C3b628cdADC4
+- Proxy Address 0x9b76e44C8d3a625D0d5e9a04227dc878B31897C2
+- Protocol address 0xb0dbA4BDEC9334f4E9663e9b9941E37018BbE81a
+
 ## Foundry
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
