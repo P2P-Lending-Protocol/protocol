@@ -524,6 +524,19 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
+    /// @dev For adding more tokens that are loanable on the platform
+    /// @param _token the address of the token you want to be loanable on the protocol
+    /// @param _priceFeed the address of the currency pair on chainlink
+    function addLoanableToken(
+        address _token,
+        address _priceFeed
+    ) external onlyOwner {
+        s_isLoanable[_token] = true;
+        s_priceFeeds[_token] = _priceFeed;
+        s_loanableToken.push(_token);
+        emit UpdateLoanableToken(_token, _priceFeed, msg.sender);
+    }
+
     ///////////////////////
     /// VIEW FUNCTIONS ///
     //////////////////////
@@ -600,6 +613,15 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     {
         _totalBurrowInUsd = 0; //TODO: create a function to get this
         _collateralValueInUsd = getAccountCollateralValue(_user);
+    }
+
+    /// @return _assets the collection of token that can be loaned in the protocol
+    function getLoanableAssets()
+        external
+        view
+        returns (address[] memory _assets)
+    {
+        _assets = s_loanableToken;
     }
 
     /// @dev Acts as our contructor
