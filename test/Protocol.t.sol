@@ -25,9 +25,11 @@ contract ProtocolTest is Test, IProtocolTest {
     address diaToken = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     // address USDCAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address WETHAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address avaxToken = 0x85f138bfEE4ef8e540890CFb48F620571d67Eda3;
 
     address WETH_USD = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
     address DAI_USD = 0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9;
+    address AVAX_USD = 0xFF3EEb22B5E3dE6e705b44749C2559d704923FD7;
 
     function setUp() public {
         owner = mkaddr("owner");
@@ -40,9 +42,11 @@ contract ProtocolTest is Test, IProtocolTest {
         // tokens.punsh(USDCAddress);
         tokens.push(diaToken);
         tokens.push(WETHAddress);
+        tokens.push(avaxToken);
 
         priceFeed.push(DAI_USD);
         priceFeed.push(WETH_USD);
+        priceFeed.push(AVAX_USD);
         // priceFeed.push(USDCAddre
         protocol.initialize(owner, tokens, priceFeed, address(peerToken));
         IERC20(WETHAddress).approve(address(protocol), type(uint).max);
@@ -93,10 +97,13 @@ contract ProtocolTest is Test, IProtocolTest {
 
     function testExcessiveBorrowing() public {
         testDepositTCollateral();
-        uint256 requestAmount = 50e18;
+        uint256 requestAmount = 3000e18;
         uint8 interestRate = 5;
         uint256 returnDate = block.timestamp + 365 days; // 1 year later
 
+        vm.expectRevert(
+            abi.encodeWithSelector(Protocol__InsufficientCollateral.selector)
+        );
         protocol.createLendingRequest(
             WETHAddress,
             requestAmount,
@@ -105,10 +112,16 @@ contract ProtocolTest is Test, IProtocolTest {
             diaToken
         );
 
-        // Verify that the request is correctly added
-        Protocol.Request[] memory requests = protocol.getAllRequest();
-        assertEq(requests.length, 1);
-        assertEq(requests[0].amount, requestAmount);
+        vm.expectRevert(
+            abi.encodeWithSelector(Protocol__InsufficientCollateral.selector)
+        );
+        protocol.createLendingRequest(
+            WETHAddress,
+            100e18,
+            interestRate,
+            returnDate,
+            avaxToken
+        );
     }
 
     function testUser_CanGiveOffer_ToRequest() public {
@@ -364,6 +377,46 @@ contract ProtocolTest is Test, IProtocolTest {
         protocol.serviceRequest(owner, 1, WETHAddress);
     }
 
+    // function test_addCollateralTokens() public {
+    //     address[] memory _tokens = new address[](5);
+    //     address[] memory _priceFeed = new address[](5);
+
+    //     address[] memory _collateralTokens = protocol.getAllCollateralToken();
+
+    //     for (uint256 i = 0; i < 5; i++) {
+    //         _tokens[i] = mkaddr(string(abi.encodePacked("Token", i)));
+    //         _priceFeed[i] = mkaddr(string(abi.encodePacked("priceFeed", i)));
+    //     }
+    //     protocol.addCollateralTokens(_tokens, _priceFeed);
+
+    //     protocol.getAllCollateralToken();
+
+    //     assertEq(
+    //         protocol.getAllCollateralToken().length,
+    //         _collateralTokens.length + 5
+    //     );
+    // }
+
+    // function test_removeCollateralTokens() public {
+    //     test_addCollateralTokens();
+    //     address[] memory _tokens = new address[](5);
+    //     address[] memory _priceFeed = new address[](5);
+
+    //     address[] memory _collateralTokens = protocol.getAllCollateralToken();
+
+    //     for (uint256 i = 0; i < 5; i++) {
+    //         _tokens[i] = mkaddr(string(abi.encodePacked("Token", i)));
+    //         _priceFeed[i] = mkaddr(string(abi.encodePacked("priceFeed", i)));
+    //     }
+
+    //     protocol.removeCollateralTokens(_tokens);
+
+    //     assertEq(
+    //         protocol.getAllCollateralToken().length,
+    //         _collateralTokens.length - 5
+    //     );
+    // }
+
     function mkaddr(string memory name) public returns (address) {
         address addr = address(
             uint160(uint256(keccak256(abi.encodePacked(name))))
@@ -382,24 +435,3 @@ contract ProtocolTest is Test, IProtocolTest {
         }
     }
 }
-
-// function setUp() public {
-//     owner = vm.addr(1);
-//     address alice = vm.addr(2);
-
-//     vm.startPrank(owner);
-//     peerToken = new PeerToken(owner);
-//     protocol = new Protocol();
-
-//     tokens.push(WETHAddress);
-//     tokens.push(diaToken);
-
-//     priceFeed.push(DAI_ETH); // Mock address representing ETH/USD feed
-//     priceFeed.push(DAI_USD); // Mock address representing DAI/USD feed
-
-//     protocol.initialize(owner, tokens, priceFeed, address(peerToken));
-//     IERC20(WETHAddress).approve(address(protocol), type(uint256).max);
-//     IERC20(diaToken).approve(address(protocol), type(uint256).max);
-
-//     vm.stopPrank();
-// }

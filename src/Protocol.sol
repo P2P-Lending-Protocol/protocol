@@ -436,6 +436,48 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit CollateralWithdrawn(msg.sender, _tokenCollateralAddress, _amount);
     }
 
+    /// @notice Adds new collateral tokens to the protocol
+    /// @param _tokens Array of new collateral token addresses
+    /// @param _priceFeeds Array of price feed addresses for the new collateral tokens
+    function addCollateralTokens(
+        address[] memory _tokens,
+        address[] memory _priceFeeds
+    ) external onlyOwner {
+        if (_tokens.length != _priceFeeds.length) {
+            revert Protocol__tokensAndPriceFeedsArrayMustBeSameLength();
+        }
+        for (uint8 i = 0; i < _tokens.length; i++) {
+            s_priceFeeds[_tokens[i]] = _priceFeeds[i];
+            s_collateralToken.push(_tokens[i]);
+        }
+        emit UpdatedCollateralTokens(
+            msg.sender,
+            uint8(s_collateralToken.length)
+        );
+    }
+
+    /// @notice Removes collateral tokens from the protocol
+    /// @param _tokens Array of collateral token addresses to remove
+    function removeCollateralTokens(
+        address[] memory _tokens
+    ) external onlyOwner {
+        for (uint8 i = 0; i < _tokens.length; i++) {
+            s_priceFeeds[_tokens[i]] = address(0);
+            for (uint8 j = 0; j < s_collateralToken.length; j++) {
+                if (s_collateralToken[j] == _tokens[i]) {
+                    s_collateralToken[j] = s_collateralToken[
+                        s_collateralToken.length - 1
+                    ];
+                    s_collateralToken.pop();
+                }
+            }
+        }
+        emit UpdatedCollateralTokens(
+            msg.sender,
+            uint8(s_collateralToken.length)
+        );
+    }
+
     ///////////////////////
     /// VIEW FUNCTIONS ///
     //////////////////////
