@@ -24,16 +24,20 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     /// @dev maps collateral token to their price feed
     mapping(address token => address priceFeed) private s_priceFeeds;
+    /// @dev maps address of a token to see if it is loanable
+    mapping(address token => bool isLoanable) private s_isLoanable;
     /// @dev maps user to the value of balance he has collaterised
     mapping(address => mapping(address token => uint256 balance))
         private s_addressToCollateralDeposited;
     ///@dev mapping the address of a user to its Struct
     mapping(address => User) private addressToUser;
-
+    ///@dev mapping of users to their address
     mapping(address user => mapping(uint96 requestId => Request))
         private request;
     /// @dev Collection of all colleteral Adresses
     address[] private s_collateralToken;
+    /// @dev all loanable assets
+    address[] private s_loanableToken;
     /// @dev Collection of all all the resquest;
     Request[] private s_requests;
     /// @dev request id;
@@ -160,7 +164,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     /**
      * @notice Creates a request for a loan
-     * @param _collateralAddr The address of the token used as collateral
      * @param _amount The principal amount of the loan
      * @param _interest The annual interest rate of the loan (in percentage points)
      * @param _returnDate The unix timestamp by when the loan should be repaid
@@ -168,17 +171,16 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @dev This function calculates the required repayments and checks the borrower's collateral before accepting a loan request.
      */
     function createLendingRequest(
-        address _collateralAddr,
         uint256 _amount,
         uint8 _interest,
         uint256 _returnDate,
         address _loanCurrency
     ) external moreThanZero(_amount) {
-        if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
-            revert Protocol__InsufficientCollateral();
-
-        uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+        if (!s_isLoanable[_loanCurrency]) {
+            revert Protocol__TokenNotLoanable();
+        }
         if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
+        uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
 
         uint256 collateralValueInLoanCurrency = getAccountCollateralValue(
             msg.sender
@@ -186,7 +188,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
         if (
-            addressToUser[msg.sender].totalLoanCollected + _loanUsdValue >
+            addressToUser[msg.sender].totalLoanCollected + _loanUsdValue >=
             maxLoanableAmount
         ) {
             revert Protocol__InsufficientCollateral();

@@ -19,7 +19,7 @@ error Protocol__OfferNotOpen();
 error Protocol__InvalidToken();
 error Protocol__InsufficientAllowance();
 error Protocol__RequestNotServiced();
-
+error Protocol__TokenNotLoanable();
 
 error Governance__NotEnoughTokenBalance();
 error Governance__NotEnoughAllowance();
@@ -31,12 +31,7 @@ error Governance__AlreadyVoted();
 error Governance__AlreadyStaked();
 error Governance__NoStakedToken();
 error Governance__OptionDoesNotExist();
-error Protocol__InsufficientCollateralDeposited();    
-error   Protocol__RepayAmountExceedsDebt();
+error Protocol__InsufficientCollateralDeposited();
+error Protocol__RepayAmountExceedsDebt();
 error Protocol__LoanNotServiced();
 error Protocol__InvalidAmount();
-
-
-
-
-
