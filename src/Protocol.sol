@@ -24,16 +24,20 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     /// @dev maps collateral token to their price feed
     mapping(address token => address priceFeed) private s_priceFeeds;
+    /// @dev maps address of a token to see if it is loanable
+    mapping(address token => bool isLoanable) private s_isLoanable;
     /// @dev maps user to the value of balance he has collaterised
     mapping(address => mapping(address token => uint256 balance))
         private s_addressToCollateralDeposited;
     ///@dev mapping the address of a user to its Struct
     mapping(address => User) private addressToUser;
-
+    ///@dev mapping of users to their address
     mapping(address user => mapping(uint96 requestId => Request))
         private request;
     /// @dev Collection of all colleteral Adresses
     address[] private s_collateralToken;
+    /// @dev all loanable assets
+    address[] private s_loanableToken;
     /// @dev Collection of all all the resquest;
     Request[] private s_requests;
     /// @dev request id;
@@ -151,16 +155,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function gets_addressToCollateralDeposited(
-        address _sender,
-        address tokenAddr
-    ) external view returns (uint256) {
-        return s_addressToCollateralDeposited[_sender][tokenAddr];
-    }
 
     /**
      * @notice Creates a request for a loan
-     * @param _collateralAddr The address of the token used as collateral
      * @param _amount The principal amount of the loan
      * @param _interest The annual interest rate of the loan (in percentage points)
      * @param _returnDate The unix timestamp by when the loan should be repaid
@@ -168,17 +165,16 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @dev This function calculates the required repayments and checks the borrower's collateral before accepting a loan request.
      */
     function createLendingRequest(
-        address _collateralAddr,
         uint256 _amount,
         uint8 _interest,
         uint256 _returnDate,
         address _loanCurrency
     ) external moreThanZero(_amount) {
-        if (s_addressToCollateralDeposited[msg.sender][_collateralAddr] < 1)
-            revert Protocol__InsufficientCollateral();
-
-        uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+        if (!s_isLoanable[_loanCurrency]) {
+            revert Protocol__TokenNotLoanable();
+        }
         if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
+        uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
 
         uint256 collateralValueInLoanCurrency = getAccountCollateralValue(
             msg.sender
@@ -186,7 +182,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 maxLoanableAmount = (collateralValueInLoanCurrency * 85) / 100;
 
         if (
-            addressToUser[msg.sender].totalLoanCollected + _loanUsdValue >
+            addressToUser[msg.sender].totalLoanCollected + _loanUsdValue >=
             maxLoanableAmount
         ) {
             revert Protocol__InsufficientCollateral();
@@ -195,14 +191,14 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         requestId++;
         Request storage _newRequest = request[msg.sender][requestId];
         _newRequest.author = msg.sender;
-        _newRequest.tokenAddr = _collateralAddr;
         _newRequest.amount = _amount;
         _newRequest.interest = _interest;
         _newRequest.returnDate = _returnDate;
-        _newRequest._totalRepayment = calculateLoanInterest(
+        _newRequest._totalRepayment = _calculateLoanInterest(
             _returnDate,
             _amount,
-            _interest
+            _interest,
+            _loanCurrency
         );
         _newRequest.loanRequestAddr = _loanCurrency;
         _newRequest.status = Status.OPEN;
@@ -241,34 +237,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit LoanRepayment(msg.sender, _requestId, _amount);
     }
 
-    function calculateLoanInterest(
-        uint256 _returnDate,
-        uint256 _amount,
-        uint8 _interest
-    ) internal view returns (uint256 _totalRepayment) {
-        require(
-            _returnDate > block.timestamp,
-            "Return date must be in the future."
-        );
-        // Calculate the duration of the loan in days
-        uint256 _repaymentDuration = (_returnDate - block.timestamp) / 86400; // seconds in a day
-        // Calculate the total repayment amount including interest
-        _totalRepayment =
-            _amount +
-            ((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
-        return _totalRepayment;
-    }
 
-    function getAllRequest() external view returns (Request[] memory) {
-        return s_requests;
-    }
-
-    function getUserRequest(
-        address _user,
-        uint96 _requestId
-    ) external view returns (Request memory) {
-        return request[_user][_requestId];
-    }
 
     /// @notice Allows a lender to make an offer to a lending request
     /// @param _borrower Address of the borrower who created the request
@@ -293,9 +262,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (_foundRequest.loanRequestAddr != _tokenAddress)
             revert Protocol__InvalidToken();
 
-        IERC20(_tokenAddress).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_tokenAddress).approve(address(this), _amount);
 
-        amountUserIsLending[msg.sender] = _amount;
 
         Offer memory _offer;
         _offer.offerId = _offer.offerId + 1;
@@ -308,14 +276,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _foundRequest.offer.push(_offer);
 
         emit OfferCreated(msg.sender, _tokenAddress, _amount, _requestId);
-    }
-
-    function getAllOfferForUser(
-        address _borrower,
-        uint96 _requestId
-    ) external view returns (Offer[] memory) {
-        Request storage _foundRequest = request[_borrower][_requestId];
-        return _foundRequest.offer;
     }
 
     /// @notice Responds to an offer for a lending request
@@ -342,9 +302,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _foundOffer.offerStatus = _status;
 
         if (_status == OfferStatus.ACCEPTED) {
-            handleAcceptedOffer(_foundRequest, _foundOffer, _offerId);
+            _handleAcceptedOffer(_foundRequest, _foundOffer, _offerId);
         } else if (_status == OfferStatus.REJECTED) {
-            handleRejectedOffer(_foundOffer);
+            _handleRejectedOffer(_foundOffer);
         }
 
         emit RespondToLendingOffer(
@@ -355,55 +315,48 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
-    function handleAcceptedOffer(
+    /// @dev For handling acccepting of offers
+    /// @param _foundRequest the request a user made
+    /// @param _foundOffer the Offer a Lender made
+    /// @param _offerId the id of the Id
+    function _handleAcceptedOffer(
         Request storage _foundRequest,
         Offer storage _foundOffer,
         uint96 _offerId
     ) internal {
         _foundRequest.lender = _foundOffer.author;
         _foundRequest.status = Status.SERVICED;
+        _foundOffer.offerStatus = OfferStatus.ACCEPTED;
         // _foundRequest.disbursementTimestamp = block.timestamp;  // Timestamp for interest accrual start
 
-        uint256 _totalRepayment = calculateLoanInterest(
+        uint256 _totalRepayment = _calculateLoanInterest(
             _foundOffer.returnDate,
             _foundOffer.amount,
-            _foundOffer.interest
+            _foundOffer.interest,
+            _foundOffer.tokenAddr
         );
         _foundRequest._totalRepayment = _totalRepayment;
         // Update user's total obligation with the expected total repayment
         addressToUser[_foundRequest.author]
             .totalLoanCollected += _totalRepayment;
 
-        uint256 amountToLend = amountUserIsLending[_foundOffer.author];
+        if(_healthFactor(_foundRequest.author) < 1){
+            revert Protocol__InsufficientCollateral();
+        };
+        
+        IERC20(_foundOffer.tokenAddr).transferFrom(
+            _foundOffer.author,
+            _foundRequest.author,
+            _foundOffer.amount
+        );
 
-        amountUserIsLending[_foundOffer.author] = 0;
-        IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
-
-        // Refund other offers
-        for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
-            if (
-                _index != _offerId &&
-                _foundRequest.offer[_index].offerStatus == OfferStatus.OPEN
-            ) {
-                Offer storage otherOffer = _foundRequest.offer[_index];
-                uint256 refundAmount = amountUserIsLending[otherOffer.author];
-                amountUserIsLending[otherOffer.author] = 0;
-                IERC20(otherOffer.tokenAddr).transfer(
-                    otherOffer.author,
-                    refundAmount
-                );
-            }
-        }
-        emit OfferAccepted(_foundRequest.author, _offerId);
+        emit OfferAccepted(_foundRequest.author, _offerId, _foundOffer.amount);
     }
 
-    function handleRejectedOffer(Offer storage _foundOffer) internal {
-        uint256 amountToRefund = amountUserIsLending[_foundOffer.author];
-        amountUserIsLending[_foundOffer.author] = 0;
-        IERC20(_foundOffer.tokenAddr).transfer(
-            _foundOffer.author,
-            amountToRefund
-        );
+    /// @dev handle the rejection of an offer
+    /// @param _foundOffer the offer being sent
+    function _handleRejectedOffer(Offer storage _foundOffer) internal {
+        _foundOffer.offerStatus = OfferStatus.REJECTED;
     }
 
     /// @notice Directly services a lending request by transferring funds to the borrower
@@ -429,6 +382,20 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             IERC20(_tokenAddress).allowance(msg.sender, address(this)) <
             amountToLend
         ) revert Protocol__InsufficientAllowance();
+
+        uint256 _totalRepayment = _calculateLoanInterest(
+            _foundRequest.returnDate,
+            _foundRequest.amount,
+            _foundRequest.interest,
+            _foundRequest.loanRequestAddr
+        );
+        _foundRequest._totalRepayment = _totalRepayment;
+        addressToUser[_foundRequest.author]
+            .totalLoanCollected += _totalRepayment;
+
+        if(_healthFactor(_foundRequest.author) < 1){
+            revert Protocol__InsufficientCollateral();
+        };
 
         // Transfer the funds from the lender to the borrower
         bool success = IERC20(_tokenAddress).transferFrom(
@@ -464,12 +431,13 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__InsufficientCollateralDeposited();
         }
 
-        // Check if remaining collateral still covers all loan obligations
-        _revertIfHealthFactorIsBroken(msg.sender);
-
         s_addressToCollateralDeposited[msg.sender][
             _tokenCollateralAddress
         ] -= _amount;
+
+        // Check if remaining collateral still covers all loan obligations
+        _revertIfHealthFactorIsBroken(msg.sender);
+
 
         bool success = IERC20(_tokenCollateralAddress).transfer(
             msg.sender,
@@ -522,9 +490,36 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
+    /// @dev For adding more tokens that are loanable on the platform
+    /// @param _token the address of the token you want to be loanable on the protocol
+    /// @param _priceFeed the address of the currency pair on chainlink
+    function addLoanableToken(
+        address _token,
+        address _priceFeed
+    ) external onlyOwner {
+        s_isLoanable[_token] = true;
+        s_priceFeeds[_token] = _priceFeed;
+        s_loanableToken.push(_token);
+        emit UpdateLoanableToken(_token, _priceFeed, msg.sender);
+    }
+
+    /// @dev for upating git coin post score
+    /// @param _user the address to the user you want to update
+    /// @param _score the gitcoin point score.
+    function updateGPScore(address _user, uint256 _score) public onlyOwner{
+        s_addressToUser[_user].gitCoinPoint = _score;
+    }
+
     ///////////////////////
     /// VIEW FUNCTIONS ///
     //////////////////////
+
+    /// @dev for getting the gitcoinpoint score
+    /// @param _user the address of you wan to check the score for.
+    /// @return _score the user scors.
+    function get_gitCoinPoint(address _user) external view returns(uint256 _score){
+        _score = s_addressToUser[_user].gitCoinPoint;
+    }
 
     /// @notice Checks the health Factor which is a way to check if the user has enough collateral to mint
     /// @param _user a parameter for the address to check
@@ -541,6 +536,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             _totalBurrowInUsd;
     }
 
+    /// @dev get the collection of all collateral token
+    /// @return {address[] memory} the collection of collateral addresses 
     function getAllCollateralToken() external view returns (address[] memory) {
         return s_collateralToken;
     }
@@ -585,6 +582,68 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             Constants.PRECISION;
     }
 
+    /// @dev gets all the offers for a particular user
+    /// @param _borrower the user who is trying to borrow
+    /// @param _requestId the id of the request you are trying to get the offers from
+    /// @return {Offer[] memory} the collection of offers made
+    function getAllOfferForUser(
+        address _borrower,
+        uint96 _requestId
+    ) external view returns (Offer[] memory) {
+        Request storage _foundRequest = request[_borrower][_requestId];
+        return _foundRequest.offer;
+    }
+
+    /// @dev gets the amount of collateral auser has deposited
+    /// @param _sender the user who has the collateral
+    /// @param _tokenAddr the user who has the collateral
+    /// @return {uint256} the return variables of a contract’s function state variable
+    function gets_addressToCollateralDeposited(
+        address _sender,
+        address _tokenAddr
+    ) external view returns (uint256) {
+        return s_addressToCollateralDeposited[_sender][_tokenAddr];
+    }
+
+    /// @dev gets all the requests from the protocol
+    /// @return {Request[] memory} all requests created
+    function getAllRequest() external view returns (Request[] memory) {
+        return s_requests;
+    }
+
+    /// @dev calculates the loan interest and add it to the loam
+    /// @param _returnDate the date at which the loan should be returned
+    /// @param _amount the amount the user want to borrow
+    /// @param _interest the percentage the user has agreed to payback
+    /// @param _token the token the user want to borrow
+    /// @return _totalRepayment the amount the user is to payback
+    function _calculateLoanInterest(
+        uint256 _returnDate,
+        uint256 _amount,
+        uint8 _interest,
+        address _token,
+    ) internal view returns (uint256 _totalRepayment) {
+        if(
+            !_returnDate > block.timestamp
+        ) revert Protocol__DateMustBeInFuture();
+        // usd value
+        uint256 amountInUsd = getUsdValue(_token, _amount);
+        // Calculate the total repayment amount including interest
+        _totalRepayment = amountInUsd * _interest / 100;
+        return _totalRepayment;
+    }
+
+    /// @dev gets a request from a user
+    /// @param _user the addresss of the user
+    /// @param _requestId the id of the request that was created by the user
+    /// @return Documents the return variables of a contract’s function state variable
+    function getUserRequest(
+        address _user,
+        uint96 _requestId
+    ) external view returns (Request memory) {
+        return request[_user][_requestId];
+    }
+
     /// @notice This gets the account info of any account
     /// @param _user a parameter for the user account info you want to get
     /// @return _totalBurrowInUsd returns the total amount of SC the  user has minted
@@ -596,8 +655,18 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         view
         returns (uint256 _totalBurrowInUsd, uint256 _collateralValueInUsd)
     {
-        _totalBurrowInUsd = 0; //TODO: create a function to get this
+        _totalBurrowInUsd = s_addressToUser[_user].totalLoanCollected;
         _collateralValueInUsd = getAccountCollateralValue(_user);
+    }
+
+
+    /// @return _assets the collection of token that can be loaned in the protocol
+    function getLoanableAssets()
+        external
+        view
+        returns (address[] memory _assets)
+    {
+        _assets = s_loanableToken;
     }
 
     /// @dev Acts as our contructor
