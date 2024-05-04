@@ -503,9 +503,23 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit UpdateLoanableToken(_token, _priceFeed, msg.sender);
     }
 
+    /// @dev for upating git coin post score
+    /// @param _user the address to the user you want to update
+    /// @param _score the gitcoin point score.
+    function updateGPScore(address _user, uint256 _score) public onlyOwner{
+        s_addressToUser[_user].gitCoinPoint = _score;
+    }
+
     ///////////////////////
     /// VIEW FUNCTIONS ///
     //////////////////////
+
+    /// @dev for getting the gitcoinpoint score
+    /// @param _user the address of you wan to check the score for.
+    /// @return _score the user scors.
+    function get_gitCoinPoint(address _user) external view returns(uint256 _score){
+        _score = s_addressToUser[_user].gitCoinPoint;
+    }
 
     /// @notice Checks the health Factor which is a way to check if the user has enough collateral to mint
     /// @param _user a parameter for the address to check
@@ -522,6 +536,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             _totalBurrowInUsd;
     }
 
+    /// @dev get the collection of all collateral token
+    /// @return {address[] memory} the collection of collateral addresses 
     function getAllCollateralToken() external view returns (address[] memory) {
         return s_collateralToken;
     }
