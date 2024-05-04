@@ -200,7 +200,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _newRequest.amount = _amount;
         _newRequest.interest = _interest;
         _newRequest.returnDate = _returnDate;
-        _newRequest._totalRepayment = calculateLoanInterest(
+        _newRequest._totalRepayment = _calculateLoanInterest(
             _returnDate,
             _amount,
             _interest,
@@ -243,7 +243,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit LoanRepayment(msg.sender, _requestId, _amount);
     }
 
-    function calculateLoanInterest(
+    function _calculateLoanInterest(
         uint256 _returnDate,
         uint256 _amount,
         uint8 _interest,
@@ -361,7 +361,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _foundOffer.offerStatus = OfferStatus.ACCEPTED;
         // _foundRequest.disbursementTimestamp = block.timestamp;  // Timestamp for interest accrual start
 
-        uint256 _totalRepayment = calculateLoanInterest(
+        uint256 _totalRepayment = _calculateLoanInterest(
             _foundOffer.returnDate,
             _foundOffer.amount,
             _foundOffer.interest,
@@ -415,6 +415,20 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             amountToLend
         ) revert Protocol__InsufficientAllowance();
 
+        uint256 _totalRepayment = _calculateLoanInterest(
+            _foundRequest.returnDate,
+            _foundRequest.amount,
+            _foundRequest.interest,
+            _foundRequest.loanRequestAddr
+        );
+        _foundRequest._totalRepayment = _totalRepayment;
+        addressToUser[_foundRequest.author]
+            .totalLoanCollected += _totalRepayment;
+
+        if(_healthFactor(_foundRequest.author) < 1){
+            revert Protocol__InsufficientCollateral();
+        };
+
         // Transfer the funds from the lender to the borrower
         bool success = IERC20(_tokenAddress).transferFrom(
             msg.sender,
@@ -449,12 +463,13 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__InsufficientCollateralDeposited();
         }
 
-        // Check if remaining collateral still covers all loan obligations
-        _revertIfHealthFactorIsBroken(msg.sender);
-
         s_addressToCollateralDeposited[msg.sender][
             _tokenCollateralAddress
         ] -= _amount;
+
+        // Check if remaining collateral still covers all loan obligations
+        _revertIfHealthFactorIsBroken(msg.sender);
+
 
         bool success = IERC20(_tokenCollateralAddress).transfer(
             msg.sender,
@@ -606,9 +621,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         view
         returns (uint256 _totalBurrowInUsd, uint256 _collateralValueInUsd)
     {
-        _totalBurrowInUsd = 0; //TODO: create a function to get this
+        _totalBurrowInUsd = s_addressToUser[_user].totalLoanCollected;
         _collateralValueInUsd = getAccountCollateralValue(_user);
     }
+
 
     /// @return _assets the collection of token that can be loaned in the protocol
     function getLoanableAssets()
