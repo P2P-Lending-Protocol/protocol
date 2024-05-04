@@ -155,7 +155,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-
     /**
      * @notice Creates a request for a loan
      * @param _amount The principal amount of the loan
@@ -173,8 +172,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (!s_isLoanable[_loanCurrency]) {
             revert Protocol__TokenNotLoanable();
         }
-        if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
         uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+        if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
 
         uint256 collateralValueInLoanCurrency = getAccountCollateralValue(
             msg.sender
@@ -209,6 +208,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     function repayLoan(uint96 _requestId, uint256 _amount) public {
         Request storage _foundRequest = request[msg.sender][_requestId];
+        uint256 _repaymentValueUsd = getUsdValue(
+            _foundRequest.loanRequestAddr,
+            _amount
+        );
         if (_foundRequest.status != Status.SERVICED)
             revert Protocol__RequestNotServiced();
 
@@ -217,10 +220,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__InsufficientBalance();
 
         // protocol only pays what is remaining without taking excess user token
-        if (_foundRequest._totalRepayment >= _amount) {
-            _foundRequest._totalRepayment -= _amount;
+        if (_foundRequest._totalRepayment >= _repaymentValueUsd) {
+            _foundRequest._totalRepayment -= _repaymentValueUsd;
         } else {
-            _amount = _foundRequest._totalRepayment;
+            _repaymentValueUsd = _foundRequest._totalRepayment;
             _foundRequest._totalRepayment = 0;
         }
 
@@ -236,8 +239,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         emit LoanRepayment(msg.sender, _requestId, _amount);
     }
-
-
 
     /// @notice Allows a lender to make an offer to a lending request
     /// @param _borrower Address of the borrower who created the request
@@ -263,7 +264,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__InvalidToken();
 
         IERC20(_tokenAddress).approve(address(this), _amount);
-
 
         Offer memory _offer;
         _offer.offerId = _offer.offerId + 1;
@@ -340,10 +340,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         addressToUser[_foundRequest.author]
             .totalLoanCollected += _totalRepayment;
 
-        if(_healthFactor(_foundRequest.author) < 1){
+        if (_healthFactor(_foundRequest.author) < 1) {
             revert Protocol__InsufficientCollateral();
-        };
-        
+        }
+
         IERC20(_foundOffer.tokenAddr).transferFrom(
             _foundOffer.author,
             _foundRequest.author,
@@ -373,6 +373,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__RequestNotOpen();
         if (_foundRequest.loanRequestAddr != _tokenAddress)
             revert Protocol__InvalidToken();
+
+        _foundRequest.lender = msg.sender;
+        _foundRequest.status = Status.SERVICED;
         uint256 amountToLend = _foundRequest.amount;
 
         // Check if the lender has enough balance and the allowance to transfer the tokens
@@ -383,19 +386,22 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             amountToLend
         ) revert Protocol__InsufficientAllowance();
 
-        uint256 _totalRepayment = _calculateLoanInterest(
-            _foundRequest.returnDate,
-            _foundRequest.amount,
-            _foundRequest.interest,
-            _foundRequest.loanRequestAddr
-        );
+        uint256 _loanUsdValue = getUsdValue(_tokenAddress, amountToLend);
+
+        uint256 _totalRepayment = _loanUsdValue +
+            _calculateLoanInterest(
+                _foundRequest.returnDate,
+                _foundRequest.amount,
+                _foundRequest.interest,
+                _foundRequest.loanRequestAddr
+            );
         _foundRequest._totalRepayment = _totalRepayment;
         addressToUser[_foundRequest.author]
             .totalLoanCollected += _totalRepayment;
 
-        if(_healthFactor(_foundRequest.author) < 1){
+        if (_healthFactor(_foundRequest.author) < 1) {
             revert Protocol__InsufficientCollateral();
-        };
+        }
 
         // Transfer the funds from the lender to the borrower
         bool success = IERC20(_tokenAddress).transferFrom(
@@ -437,7 +443,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         // Check if remaining collateral still covers all loan obligations
         _revertIfHealthFactorIsBroken(msg.sender);
-
 
         bool success = IERC20(_tokenCollateralAddress).transfer(
             msg.sender,
@@ -506,8 +511,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev for upating git coin post score
     /// @param _user the address to the user you want to update
     /// @param _score the gitcoin point score.
-    function updateGPScore(address _user, uint256 _score) public onlyOwner{
-        s_addressToUser[_user].gitCoinPoint = _score;
+    function updateGPScore(address _user, uint256 _score) public onlyOwner {
+        addressToUser[_user].gitCoinPoint = _score;
     }
 
     ///////////////////////
@@ -517,8 +522,10 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev for getting the gitcoinpoint score
     /// @param _user the address of you wan to check the score for.
     /// @return _score the user scors.
-    function get_gitCoinPoint(address _user) external view returns(uint256 _score){
-        _score = s_addressToUser[_user].gitCoinPoint;
+    function get_gitCoinPoint(
+        address _user
+    ) external view returns (uint256 _score) {
+        _score = addressToUser[_user].gitCoinPoint;
     }
 
     /// @notice Checks the health Factor which is a way to check if the user has enough collateral to mint
@@ -537,7 +544,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @dev get the collection of all collateral token
-    /// @return {address[] memory} the collection of collateral addresses 
+    /// @return {address[] memory} the collection of collateral addresses
     function getAllCollateralToken() external view returns (address[] memory) {
         return s_collateralToken;
     }
@@ -621,15 +628,14 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 _returnDate,
         uint256 _amount,
         uint8 _interest,
-        address _token,
+        address _token
     ) internal view returns (uint256 _totalRepayment) {
-        if(
-            !_returnDate > block.timestamp
-        ) revert Protocol__DateMustBeInFuture();
+        if (_returnDate < block.timestamp)
+            revert Protocol__DateMustBeInFuture();
         // usd value
         uint256 amountInUsd = getUsdValue(_token, _amount);
         // Calculate the total repayment amount including interest
-        _totalRepayment = amountInUsd * _interest / 100;
+        _totalRepayment = (amountInUsd * _interest) / 100;
         return _totalRepayment;
     }
 
@@ -655,10 +661,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         view
         returns (uint256 _totalBurrowInUsd, uint256 _collateralValueInUsd)
     {
-        _totalBurrowInUsd = s_addressToUser[_user].totalLoanCollected;
+        _totalBurrowInUsd = addressToUser[_user].totalLoanCollected;
         _collateralValueInUsd = getAccountCollateralValue(_user);
     }
-
 
     /// @return _assets the collection of token that can be loaned in the protocol
     function getLoanableAssets()
@@ -682,6 +687,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             revert Protocol__tokensAndPriceFeedsArrayMustBeSameLength();
         }
         for (uint8 i = 0; i < _tokens.length; i++) {
+            s_isLoanable[_tokens[i]] = true;
             s_priceFeeds[_tokens[i]] = _priceFeeds[i];
             s_collateralToken.push(_tokens[i]);
         }
