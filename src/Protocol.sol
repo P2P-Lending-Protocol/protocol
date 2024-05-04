@@ -85,7 +85,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint totalLoanCollected;
     }
     struct Request {
-        address tokenAddr;
+        uint96 requestId;
         address author;
         uint256 amount;
         uint8 interest;
@@ -189,6 +189,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         requestId++;
         Request storage _newRequest = request[msg.sender][requestId];
+        _newRequest.requestId = requestId;
         _newRequest.author = msg.sender;
         _newRequest.amount = _amount;
         _newRequest.interest = _interest;
@@ -616,6 +617,17 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @return {Request[] memory} all requests created
     function getAllRequest() external view returns (Request[] memory) {
         return s_requests;
+    }
+
+    function getRequestById(
+        uint96 _requestId
+    ) external view returns (Request memory) {
+        if (_requestId == 0) revert Protocol__InvalidId();
+        if (_requestId >= s_requests.length) revert Protocol__InvalidId();
+        Request memory _request = s_requests[_requestId - 1];
+
+        Request memory _requestById = request[_request.author][_requestId];
+        return _requestById;
     }
 
     /// @dev calculates the loan interest and add it to the loam
