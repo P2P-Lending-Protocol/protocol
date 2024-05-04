@@ -197,14 +197,14 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         requestId++;
         Request storage _newRequest = request[msg.sender][requestId];
         _newRequest.author = msg.sender;
-        _newRequest.tokenAddr = _collateralAddr;
         _newRequest.amount = _amount;
         _newRequest.interest = _interest;
         _newRequest.returnDate = _returnDate;
         _newRequest._totalRepayment = calculateLoanInterest(
             _returnDate,
             _amount,
-            _interest
+            _interest,
+            _loanCurrency
         );
         _newRequest.loanRequestAddr = _loanCurrency;
         _newRequest.status = Status.OPEN;
@@ -246,18 +246,17 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function calculateLoanInterest(
         uint256 _returnDate,
         uint256 _amount,
-        uint8 _interest
+        uint8 _interest,
+        address _token,
     ) internal view returns (uint256 _totalRepayment) {
         require(
             _returnDate > block.timestamp,
             "Return date must be in the future."
         );
-        // Calculate the duration of the loan in days
-        uint256 _repaymentDuration = (_returnDate - block.timestamp) / 86400; // seconds in a day
+        // usd value
+        uint256 amountInUsd = getUsdValue(_token, _amount);
         // Calculate the total repayment amount including interest
-        _totalRepayment =
-            _amount +
-            ((_amount * _interest * _repaymentDuration) / (365 * 100)); // assuming a year has 365 days
+        _totalRepayment = amountInUsd * _interest / 100;
         return _totalRepayment;
     }
 
@@ -297,7 +296,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         IERC20(_tokenAddress).approve(address(this), _amount);
 
-        amountUserIsLending[msg.sender] = _amount;
 
         Offer memory _offer;
         _offer.offerId = _offer.offerId + 1;
@@ -336,9 +334,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _foundOffer.offerStatus = _status;
 
         if (_status == OfferStatus.ACCEPTED) {
-            handleAcceptedOffer(_foundRequest, _foundOffer, _offerId);
+            _handleAcceptedOffer(_foundRequest, _foundOffer, _offerId);
         } else if (_status == OfferStatus.REJECTED) {
-            handleRejectedOffer(_foundOffer);
+            _handleRejectedOffer(_foundOffer);
         }
 
         emit RespondToLendingOffer(
@@ -349,55 +347,48 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         );
     }
 
-    function handleAcceptedOffer(
+    /// @dev For handling acccepting of offers
+    /// @param _foundRequest the request a user made
+    /// @param _foundOffer the Offer a Lender made
+    /// @param _offerId the id of the Id
+    function _handleAcceptedOffer(
         Request storage _foundRequest,
         Offer storage _foundOffer,
         uint96 _offerId
     ) internal {
         _foundRequest.lender = _foundOffer.author;
         _foundRequest.status = Status.SERVICED;
+        _foundOffer.offerStatus = OfferStatus.ACCEPTED;
         // _foundRequest.disbursementTimestamp = block.timestamp;  // Timestamp for interest accrual start
 
         uint256 _totalRepayment = calculateLoanInterest(
             _foundOffer.returnDate,
             _foundOffer.amount,
-            _foundOffer.interest
+            _foundOffer.interest,
+            _foundOffer.tokenAddr
         );
         _foundRequest._totalRepayment = _totalRepayment;
         // Update user's total obligation with the expected total repayment
         addressToUser[_foundRequest.author]
             .totalLoanCollected += _totalRepayment;
 
-        uint256 amountToLend = amountUserIsLending[_foundOffer.author];
+        if(_healthFactor(_foundRequest.author) < 1){
+            revert Protocol__InsufficientCollateral();
+        };
+        
+        IERC20(_foundOffer.tokenAddr).transferFrom(
+            _foundOffer.author,
+            _foundRequest.author,
+            _foundOffer.amount
+        );
 
-        amountUserIsLending[_foundOffer.author] = 0;
-        IERC20(_foundOffer.tokenAddr).transfer(msg.sender, amountToLend);
-
-        // Refund other offers
-        for (uint _index = 0; _index < _foundRequest.offer.length; _index++) {
-            if (
-                _index != _offerId &&
-                _foundRequest.offer[_index].offerStatus == OfferStatus.OPEN
-            ) {
-                Offer storage otherOffer = _foundRequest.offer[_index];
-                uint256 refundAmount = amountUserIsLending[otherOffer.author];
-                amountUserIsLending[otherOffer.author] = 0;
-                IERC20(otherOffer.tokenAddr).transfer(
-                    otherOffer.author,
-                    refundAmount
-                );
-            }
-        }
-        emit OfferAccepted(_foundRequest.author, _offerId);
+        emit OfferAccepted(_foundRequest.author, _offerId, _foundOffer.amount);
     }
 
-    function handleRejectedOffer(Offer storage _foundOffer) internal {
-        uint256 amountToRefund = amountUserIsLending[_foundOffer.author];
-        amountUserIsLending[_foundOffer.author] = 0;
-        IERC20(_foundOffer.tokenAddr).transfer(
-            _foundOffer.author,
-            amountToRefund
-        );
+    /// @dev handle the rejection of an offer
+    /// @param _foundOffer the offer being sent
+    function _handleRejectedOffer(Offer storage _foundOffer) internal {
+        _foundOffer.offerStatus = OfferStatus.REJECTED;
     }
 
     /// @notice Directly services a lending request by transferring funds to the borrower
