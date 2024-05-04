@@ -45,7 +45,6 @@ To deploy and interact with the PeerLend Protocol contracts, you need the follow
 - Foundry 
 - Ethereum Wallet.
 - Solidity Language
-- Chainlink Price Feed Oracle
 
 ### Deployment
 
@@ -53,10 +52,10 @@ The contracts was deployed via Foundry developement environment.
 
 ### Contract Addresses
 
-- **$PEER Token**: `0x8Bbf71bC1EF43F72b5e456a59d5c817e096Bc8A4`
-- **Governance Contract**: `0x57014287f2DA0b1494502849A0F6C3b628cdADC4`
-- **Proxy Contract**: `0x9b76e44C8d3a625D0d5e9a04227dc878B31897C2`
-- **Protocol Contract**: `0xb0dbA4BDEC9334f4E9663e9b9941E37018BbE81a`
+- **$PEER Token**: `0x7820EC0281fC9c5D6584868732049D72c6dd36CC`
+- **Governance Contract**: `0xA2EB92c16BB74C93933540e1164C2EbBd48411C5`
+- **Proxy Contract**: `0xB0b21e5013F49Ab71e3dD39ed626A8bf9F35A130`
+- **Protocol Contract**: `0xcEb3F79c2D8F8a8F427556690d211F26b4097D33`
 
 ### Project Live Page
 
