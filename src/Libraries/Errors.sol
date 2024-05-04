@@ -20,6 +20,7 @@ error Protocol__InvalidToken();
 error Protocol__InsufficientAllowance();
 error Protocol__RequestNotServiced();
 error Protocol__TokenNotLoanable();
+error Protocol__DateMustBeInFuture();
 
 error Governance__NotEnoughTokenBalance();
 error Governance__NotEnoughAllowance();

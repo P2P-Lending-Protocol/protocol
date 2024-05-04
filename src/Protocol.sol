@@ -155,12 +155,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         }
     }
 
-    function gets_addressToCollateralDeposited(
-        address _sender,
-        address tokenAddr
-    ) external view returns (uint256) {
-        return s_addressToCollateralDeposited[_sender][tokenAddr];
-    }
 
     /**
      * @notice Creates a request for a loan
@@ -243,33 +237,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit LoanRepayment(msg.sender, _requestId, _amount);
     }
 
-    function _calculateLoanInterest(
-        uint256 _returnDate,
-        uint256 _amount,
-        uint8 _interest,
-        address _token,
-    ) internal view returns (uint256 _totalRepayment) {
-        require(
-            _returnDate > block.timestamp,
-            "Return date must be in the future."
-        );
-        // usd value
-        uint256 amountInUsd = getUsdValue(_token, _amount);
-        // Calculate the total repayment amount including interest
-        _totalRepayment = amountInUsd * _interest / 100;
-        return _totalRepayment;
-    }
 
-    function getAllRequest() external view returns (Request[] memory) {
-        return s_requests;
-    }
-
-    function getUserRequest(
-        address _user,
-        uint96 _requestId
-    ) external view returns (Request memory) {
-        return request[_user][_requestId];
-    }
 
     /// @notice Allows a lender to make an offer to a lending request
     /// @param _borrower Address of the borrower who created the request
@@ -608,6 +576,56 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ) external view returns (Offer[] memory) {
         Request storage _foundRequest = request[_borrower][_requestId];
         return _foundRequest.offer;
+    }
+
+    /// @dev gets the amount of collateral auser has deposited
+    /// @param _sender the user who has the collateral
+    /// @param _tokenAddr the user who has the collateral
+    /// @return {uint256} the return variables of a contract’s function state variable
+    function gets_addressToCollateralDeposited(
+        address _sender,
+        address _tokenAddr
+    ) external view returns (uint256) {
+        return s_addressToCollateralDeposited[_sender][_tokenAddr];
+    }
+
+    /// @dev gets all the requests from the protocol
+    /// @return {Request[] memory} all requests created
+    function getAllRequest() external view returns (Request[] memory) {
+        return s_requests;
+    }
+
+    /// @dev calculates the loan interest and add it to the loam
+    /// @param _returnDate the date at which the loan should be returned
+    /// @param _amount the amount the user want to borrow
+    /// @param _interest the percentage the user has agreed to payback
+    /// @param _token the token the user want to borrow
+    /// @return _totalRepayment the amount the user is to payback
+    function _calculateLoanInterest(
+        uint256 _returnDate,
+        uint256 _amount,
+        uint8 _interest,
+        address _token,
+    ) internal view returns (uint256 _totalRepayment) {
+        if(
+            !_returnDate > block.timestamp
+        ) revert Protocol__DateMustBeInFuture();
+        // usd value
+        uint256 amountInUsd = getUsdValue(_token, _amount);
+        // Calculate the total repayment amount including interest
+        _totalRepayment = amountInUsd * _interest / 100;
+        return _totalRepayment;
+    }
+
+    /// @dev gets a request from a user
+    /// @param _user the addresss of the user
+    /// @param _requestId the id of the request that was created by the user
+    /// @return Documents the return variables of a contract’s function state variable
+    function getUserRequest(
+        address _user,
+        uint96 _requestId
+    ) external view returns (Request memory) {
+        return request[_user][_requestId];
     }
 
     /// @notice This gets the account info of any account
