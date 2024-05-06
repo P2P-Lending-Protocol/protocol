@@ -19,7 +19,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     // STATE VARIABLES   //
     //////////////////////
 
-    /// @dev Our utility Token $PEER TODO: import the PEER Token Contract
+    /// @dev Our utility Token
     PeerToken private s_PEER;
 
     /// @dev maps collateral token to their price feed
@@ -172,8 +172,8 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (!s_isLoanable[_loanCurrency]) {
             revert Protocol__TokenNotLoanable();
         }
-        if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
         uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
+        if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
 
         uint256 collateralValueInLoanCurrency = getAccountCollateralValue(
             msg.sender
@@ -206,6 +206,9 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit RequestCreated(msg.sender, requestId, _amount, _interest);
     }
 
+    /// @dev this function helps with loan repaymenta
+    /// @param _requestId the id of the loan the user wants to repay.
+    /// @param _amount this amount the user what to pay back.
     function repayLoan(uint96 _requestId, uint256 _amount) public {
         Request storage _foundRequest = request[msg.sender][_requestId];
         if (_foundRequest.status != Status.SERVICED)
@@ -441,6 +444,15 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(success, "Protocol__TransferFailed");
 
         emit CollateralWithdrawn(msg.sender, _tokenCollateralAddress, _amount);
+    }
+
+    /// @dev This function handles the liquidation of users
+    /// @param _user the user to liquidate
+    function _liquidate(address _user) internal {}
+
+    /// @dev This handles the automation for liquidating a user
+    function performUpkeep() {
+        //This depends on the amount of unstable collateral we are going to be using
     }
 
     /// @notice Adds new collateral tokens to the protocol
