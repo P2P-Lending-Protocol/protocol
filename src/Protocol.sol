@@ -19,6 +19,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     // STATE VARIABLES   //
     //////////////////////
 
+
     /// @dev Our utility Token $PEER TODO: import the PEER Token Contract
     PeerToken private s_PEER;
 
@@ -137,6 +138,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         moreThanZero(_amountOfCollateral)
         isTokenAllowed(_tokenCollateralAddress)
     {
+        checkIsVerified(msg.sender);
         s_addressToCollateralDeposited[msg.sender][
             _tokenCollateralAddress
         ] += _amountOfCollateral;
@@ -172,6 +174,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         if (!s_isLoanable[_loanCurrency]) {
             revert Protocol__TokenNotLoanable();
         }
+        checkIsVerified(msg.sender);
         uint256 _loanUsdValue = getUsdValue(_loanCurrency, _amount);
         if (_loanUsdValue < 1) revert Protocol__InvalidAmount();
 
@@ -208,6 +211,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     }
 
     function repayLoan(uint96 _requestId, uint256 _amount) public {
+        checkIsVerified(msg.sender);
         Request storage _foundRequest = request[msg.sender][_requestId];
         uint256 _repaymentValueUsd = getUsdValue(
             _foundRequest.loanRequestAddr,
@@ -256,6 +260,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint256 _returnedDate,
         address _tokenAddress
     ) external moreThanZero(_amount) moreThanZero(_interest) {
+        checkIsVerified(msg.sender);
         Request storage _foundRequest = request[_borrower][_requestId];
         if (_foundRequest.status != Status.OPEN)
             revert Protocol__RequestNotOpen();
@@ -288,6 +293,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint96 _offerId,
         OfferStatus _status
     ) external {
+        checkIsVerified(msg.sender);
         Request storage _foundRequest = request[msg.sender][_requestId];
         if (_foundRequest.status != Status.OPEN)
             revert Protocol__RequestNotOpen();
@@ -369,6 +375,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint8 _requestId,
         address _tokenAddress
     ) external {
+        checkIsVerified(msg.sender);
         Request storage _foundRequest = request[_borrower][_requestId];
         if (_foundRequest.status != Status.OPEN)
             revert Protocol__RequestNotOpen();
@@ -431,6 +438,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address _tokenCollateralAddress,
         uint256 _amount
     ) external moreThanZero(_amount) isTokenAllowed(_tokenCollateralAddress) {
+        checkIsVerified(msg.sender);
         uint256 depositedAmount = s_addressToCollateralDeposited[msg.sender][
             _tokenCollateralAddress
         ];
@@ -461,6 +469,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address[] memory _tokens,
         address[] memory _priceFeeds
     ) external onlyOwner {
+        checkIsVerified(msg.sender);
         if (_tokens.length != _priceFeeds.length) {
             revert Protocol__tokensAndPriceFeedsArrayMustBeSameLength();
         }
@@ -479,6 +488,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function removeCollateralTokens(
         address[] memory _tokens
     ) external onlyOwner {
+        checkIsVerified(msg.sender);
         for (uint8 i = 0; i < _tokens.length; i++) {
             s_priceFeeds[_tokens[i]] = address(0);
             for (uint8 j = 0; j < s_collateralToken.length; j++) {
@@ -503,6 +513,7 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address _token,
         address _priceFeed
     ) external onlyOwner {
+        checkIsVerified(msg.sender);
         s_isLoanable[_token] = true;
         s_priceFeeds[_token] = _priceFeed;
         s_loanableToken.push(_token);
@@ -515,6 +526,21 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function updateGPScore(address _user, uint256 _score) public onlyOwner {
         addressToUser[_user].gitCoinPoint = _score;
     }
+
+     /// @dev for upating git coin post score
+    /// @param _user the address to the user you want to update
+    /// @param _email the email address of the user that verified
+    /// @param _status the status is to verify that the user is verified
+    function updateEmail(address _user, string memory _email, bool _status) public onlyOwner {
+        addressToUser[_user].isVerified = _status;
+        addressToUser[_user].email = _email;
+    }
+
+    function checkIsVerified(address _user) private view{
+          if(!addressToUser[_user].isVerified) revert Protocol__EmailNotVerified();
+    }
+
+
 
     ///////////////////////
     /// VIEW FUNCTIONS ///
