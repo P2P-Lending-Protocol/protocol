@@ -21,6 +21,7 @@ error Protocol__InsufficientAllowance();
 error Protocol__RequestNotServiced();
 error Protocol__TokenNotLoanable();
 error Protocol__DateMustBeInFuture();
+error Protocol__EmailNotVerified();
 
 error Governance__NotEnoughTokenBalance();
 error Governance__NotEnoughAllowance();
