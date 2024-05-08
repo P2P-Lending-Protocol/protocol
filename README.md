@@ -57,43 +57,22 @@ The contracts was deployed via Foundry developement environment.
 - **Proxy Contract**: `0xB0b21e5013F49Ab71e3dD39ed626A8bf9F35A130`
 - **Protocol Contract**: `0xcEb3F79c2D8F8a8F427556690d211F26b4097D33`
 
+### Email Service Point
+To enable users to have multiple login options, Peer Lend allows for email logins and receiving push notifications for transactions happening on chain. The email service point is found [here](https://email-service-backend-2.onrender.com/swagger-ui/index.html#/)
+
 ### Project Live Page
 
-You can interact with the live project throught this link https://peer-lend-dapp.vercel.app/
+You can interact with the live project throught this [link](https://peer-lend-dapp.vercel.app/)
 
 
 ### Usage
 
-To interact with the PeerLend platform, you can follow these steps:
-
-#### Build
-
-```bash
-$ forge build
-```
-
-#### Test
-
-```bash
-$ forge test
-```
-
-#### Format
-
-```bash
-$ forge fmt
-```
-
-#### Gas Snapshots
-
-```bash
-$ forge snapshot
-```
+To interact with the PeerLend platform, you need a web3 wallet e.g Metamask, to enable you interact and make onchain transactions.
 
 
 ### Contributing
 
-Contributions to the PeerLend Protocol project are welcome! Please follow the guidelines outlined in the CONTRIBUTING.md file.
+Contributions to the PeerLend Protocol project are welcome! Please follow the guidelines outlined in the [CONTRIBUTING.md file](https://github.com/P2P-Lending-Protocol/protocol/blob/main/contributing-guide.md).
 
 ### License
 
