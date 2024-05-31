@@ -51,6 +51,10 @@ contract ProtocolTest is Test, IProtocolTest {
         protocol.initialize(owner, tokens, priceFeed, address(peerToken));
         IERC20(WETHAddress).approve(address(protocol), type(uint).max);
         IERC20(diaToken).approve(address(protocol), type(uint).max);
+
+        protocol.updateEmail(owner, "owner", true);
+        protocol.updateEmail(B, "b", true);
+        protocol.updateEmail(C, "c", true);
     }
 
     function testDepositTCollateral() public {
@@ -195,6 +199,17 @@ contract ProtocolTest is Test, IProtocolTest {
             .getAllOfferForUser(owner, 2);
         emit log("**************!!!!!", _Id2Request_OfferList);
         assertEq(_Id2Request_OfferList.length, 2);
+    }
+
+    function testgetUserRequests() public {
+        createTwoRequests(owner);
+        createTwoRequests(owner);
+
+        Protocol.Request[] memory _userRequests = protocol.getUserRequests(
+            owner
+        );
+
+        assertEq(_userRequests.length, 4);
     }
 
     // function testMultiple_UserCanGive_OfferToOneRequest() public {
@@ -458,6 +473,39 @@ contract ProtocolTest is Test, IProtocolTest {
             protocol.getAllCollateralToken().length,
             _collateralTokens.length - 5
         );
+    }
+
+    function createTwoRequests(address _user) public {
+        depositTCollateral(_user);
+        switchSigner(_user);
+
+        uint256 requestAmount = 5e16;
+        uint8 interestRate = 5;
+        uint256 returnDate = block.timestamp + 365 days;
+
+        protocol.createLendingRequest(
+            requestAmount,
+            interestRate,
+            returnDate,
+            diaToken
+        );
+        protocol.createLendingRequest(
+            requestAmount,
+            interestRate,
+            returnDate,
+            diaToken
+        );
+    }
+
+    function depositTCollateral(address _user) public {
+        // protocol.initialize(owner,tokens, priceFeed, address(peerToken));
+        switchSigner(WETHAddress);
+        // console.log("balance is ::: ",IERC20(diaToken).balanceOf(address(0)));
+        IERC20(WETHAddress).transfer(_user, 1e18);
+
+        switchSigner(_user);
+        IERC20(WETHAddress).approve(address(protocol), 1e18);
+        protocol.depositCollateral(WETHAddress, 1e18);
     }
 
     function mkaddr(string memory name) public returns (address) {

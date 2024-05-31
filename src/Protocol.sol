@@ -19,7 +19,6 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     // STATE VARIABLES   //
     //////////////////////
 
-
     /// @dev Our utility Token $PEER TODO: import the PEER Token Contract
     PeerToken private s_PEER;
 
@@ -527,20 +526,23 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         addressToUser[_user].gitCoinPoint = _score;
     }
 
-     /// @dev for upating git coin post score
+    /// @dev for upating git coin post score
     /// @param _user the address to the user you want to update
     /// @param _email the email address of the user that verified
     /// @param _status the status is to verify that the user is verified
-    function updateEmail(address _user, string memory _email, bool _status) public onlyOwner {
+    function updateEmail(
+        address _user,
+        string memory _email,
+        bool _status
+    ) public onlyOwner {
         addressToUser[_user].isVerified = _status;
         addressToUser[_user].email = _email;
     }
 
-    function checkIsVerified(address _user) private view{
-          if(!addressToUser[_user].isVerified) revert Protocol__EmailNotVerified();
+    function checkIsVerified(address _user) private view {
+        if (!addressToUser[_user].isVerified)
+            revert Protocol__EmailNotVerified();
     }
-
-
 
     ///////////////////////
     /// VIEW FUNCTIONS ///
@@ -686,6 +688,24 @@ contract Protocol is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint96 _requestId
     ) external view returns (Request memory) {
         return request[_user][_requestId];
+    }
+
+    /// @dev gets all the request from a user
+    /// @param _user the address of the user
+    /// @return {Request[] memory} the collection of requests made by the user
+    function getUserRequests(
+        address _user
+    ) public view returns (Request[] memory) {
+        Request[] memory _requests = new Request[](requestId);
+        uint96 _index = 0;
+
+        for (uint96 i = 1; i <= requestId; i++) {
+            Request memory _request = request[_user][i];
+            _requests[_index] = _request;
+            _index++;
+        }
+
+        return _requests;
     }
 
     /// @notice This gets the account info of any account
