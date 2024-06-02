@@ -112,6 +112,8 @@ contract Governance is Ownable {
         );
     }
 
+
+    
     function withdrawAndRevokeVotingPower() public {
         if (amountStaked[msg.sender] != participationStake) {
             revert Governance__NoStakedToken();
